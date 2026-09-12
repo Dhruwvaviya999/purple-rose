@@ -14,5 +14,12 @@ Rules:
 - No React, no request-scoped globals, no formatting. Presentation concerns
   belong to components.
 
-Phase 2 adds `db.ts` (the Prisma client singleton) and the first services.
-This folder is empty on purpose until then.
+The Prisma Client lives in `src/lib/db/client.ts`, not here. Import it:
+
+```ts
+import { prisma } from "@/lib/db/client";
+```
+
+This folder is empty on purpose: the first services arrive with the first
+feature that reads or writes data. See `docs/database/README.md` for the
+data access conventions.

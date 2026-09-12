@@ -1,4 +1,13 @@
+# Build scripts are blocked by default. Allow only the ones this project needs,
+# declaratively, so CI and Vercel installs behave the same as a local install
+# instead of failing on an interactive approval prompt.
+#
+#   @prisma/engines / prisma  prepare the schema engine used by the Prisma CLI
+#   esbuild                   binary used by tsx to run the TypeScript seed
 allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
   sharp: false
   unrs-resolver: false
 minimumReleaseAgeExclude:

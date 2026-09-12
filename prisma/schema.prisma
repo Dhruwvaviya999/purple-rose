@@ -1,0 +1,50 @@
+// Purple Rose database schema.
+//
+// Connection URLs are NOT declared here. Prisma 7 reads them from
+// `prisma7.config.ts` at the project root, which is also where the migration
+// path and the seed command live.
+//
+// Models are added in the phase that needs them. See docs/database/README.md
+// for what is deliberately not modelled yet.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Who a person is allowed to be in the store.
+///
+/// Stored as a native PostgreSQL enum so the database rejects any value the
+/// application does not know about. Extended only when a real, distinct set
+/// of permissions is needed.
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+/// A person who can sign in to Purple Rose.
+///
+/// Sign-in is phone number plus a one-time code, so `phoneNumber` is the
+/// account identifier and carries a unique constraint. There is deliberately
+/// no password column and no one-time-code column: codes are short-lived
+/// verification state and will get their own model in the authentication
+/// phase rather than widening this table.
+model User {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// E.164 format, including the leading "+". Normalisation happens in the
+  /// validation layer before a write; the database only enforces uniqueness.
+  phoneNumber String @unique @db.VarChar(16)
+
+  /// Display name. Optional because a phone-first signup collects it later.
+  name String? @db.VarChar(120)
+
+  role Role @default(CUSTOMER)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+}

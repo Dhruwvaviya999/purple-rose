@@ -62,3 +62,8 @@ logs/
 # tooling caches
 .eslintcache
 .turbo/
+
+# prisma
+# The client is generated from prisma/schema.prisma on install, so it is a
+# build artifact. Migrations and the schema itself ARE committed.
+/src/generated/prisma
