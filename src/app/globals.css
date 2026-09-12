@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+/*
+ * Purple Rose design tokens.
+ * Every colour, font, radius and shadow used by the UI is declared here.
+ * Components consume the generated semantic utilities (bg-surface, text-ink,
+ * border-line, bg-brand, ...) so the palette can be retuned in one place.
+ */
+
+/* Font tokens are `inline` so they resolve against the next/font variables
+   that are attached to the <html> element in the root layout. */
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-display: var(--font-cormorant), ui-serif, Georgia, "Times New Roman",
+    serif;
+}
+
+@theme {
+  /* Brand accent: a muted plum. Used sparingly, never as the page ground. */
+  --color-plum-50: #f8f4fc;
+  --color-plum-100: #efe5f7;
+  --color-plum-200: #ddc9ec;
+  --color-plum-300: #c4a5dd;
+  --color-plum-400: #a87bc9;
+  --color-plum-500: #8d57b3;
+  --color-plum-600: #73409a;
+  --color-plum-700: #5c3079;
+  --color-plum-800: #46255c;
+  --color-plum-900: #2f1a3e;
+
+  /* Neutral base: warm-leaning greys through to charcoal. */
+  --color-ink-50: #f8f7f9;
+  --color-ink-100: #f1eff3;
+  --color-ink-200: #e4e1e8;
+  --color-ink-300: #cbc6d1;
+  --color-ink-400: #a29bab;
+  --color-ink-500: #6b6574;
+  --color-ink-600: #5f5a66;
+  --color-ink-700: #46424c;
+  --color-ink-800: #2e2b33;
+  --color-ink-900: #1c1a21;
+  --color-ink-950: #110f14;
+
+  /* Semantic roles. Prefer these in components over raw scale steps. */
+  --color-canvas: #ffffff;
+  --color-surface: #faf9fb;
+  --color-surface-strong: #f2eff6;
+  --color-line: #e7e3ec;
+  --color-line-strong: #d3ccdc;
+  --color-ink: var(--color-ink-900);
+  --color-ink-muted: var(--color-ink-600);
+  --color-ink-subtle: var(--color-ink-500);
+  --color-brand: var(--color-plum-600);
+  --color-brand-strong: var(--color-plum-700);
+  --color-brand-soft: var(--color-plum-50);
+  --color-on-brand: #ffffff;
+
+  /* Layout rhythm */
+  --container-page: 82.5rem;
+  --radius-card: 0.875rem;
+  --radius-control: 0.5rem;
+
+  --shadow-subtle: 0 1px 2px 0 rgb(28 26 33 / 0.04);
+  --shadow-raised: 0 12px 32px -12px rgb(28 26 33 / 0.14);
+
+  --tracking-eyebrow: 0.18em;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    color: var(--color-ink);
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* One global keyboard focus treatment so every interactive element is
+     reachable and visible without per-component work. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-plum-200);
+    color: var(--color-ink-950);
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
