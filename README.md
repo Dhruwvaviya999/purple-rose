@@ -6,7 +6,7 @@ The application is built as a single Next.js project: the storefront, the
 customer account area, the admin console and the backend all live here. There
 is no separate API service.
 
-> **Current phase: Phase 3 — authentication.** Complete.
+> **Current phase: Phase 4 — storefront UI.** Complete.
 >
 > - **Phase 1** built the project foundation: routing boundaries, design
 >   tokens, UI primitives and the store shell.
@@ -14,8 +14,11 @@ is no separate API service.
 >   Prisma, migrations, seed infrastructure and a server-only data layer.
 > - **Phase 3** added authentication: phone number plus one-time code, with
 >   database-backed sessions, roles and a protected admin area.
+> - **Phase 4** built the storefront: home page, listing, product page and a
+>   reusable commerce component system, with filtering and sorting in the URL.
 >
-> No commerce functionality is implemented yet. See
+> **The catalogue is not real yet.** Products, categories and imagery come
+> from a clearly marked mock layer that Phase 5 deletes. See
 > [What is not built yet](#what-is-not-built-yet).
 
 ---
@@ -34,10 +37,12 @@ is no separate API service.
 | ORM             | Prisma 7 with the `@prisma/adapter-pg` driver |
 | Auth            | Phone plus one-time code, built on Next.js primitives |
 | Validation      | Zod 4, server-side                           |
+| Phone parsing   | `libphonenumber-js`                          |
 | Package manager | pnpm                                         |
 | Hosting target  | Vercel                                       |
 
-Planned for later phases: the catalogue, then the rest of the store.
+Planned for later phases: the real product catalogue, then the bag, checkout
+and orders.
 
 There is no Docker in this project, and there will not be one. It runs directly
 on Node.js with pnpm, and connects to Neon over the network. See
@@ -137,6 +142,9 @@ Three rules hold for the whole project:
 | ------------- | ----------------------------------------------- |
 | `/`           | Storefront home — brand shell                   |
 | `/shop`       | Catalogue — empty until products exist          |
+| `/shop/[slug]`| Product page. Mock data; slugs come from the mock layer |
+| `/wishlist`   | Wishlist shell. Saving is not implemented       |
+| `/cart`       | Bag shell. Carts are not implemented            |
 | `/login`      | Phone plus one-time code sign-in, public        |
 | `/admin`      | Admin overview. **ADMIN only**, never indexed   |
 | `/api/health` | Liveness and database reachability probe        |
@@ -158,7 +166,8 @@ scripts/
 
 docs/
 ├── database/README.md        database architecture, decisions and workflows
-└── authentication/README.md  auth architecture, OTP lifecycle, security notes
+├── authentication/README.md  auth architecture, OTP lifecycle, security notes
+└── storefront/README.md      component system, product contract, mock policy
 
 src/
 ├── proxy.ts                  optimistic request guard (Next.js 16 convention)
@@ -166,7 +175,10 @@ src/
 │   ├── (store)/              storefront group: header + footer chrome
 │   │   ├── layout.tsx        store shell, skip link
 │   │   ├── page.tsx          /
-│   │   └── shop/page.tsx     /shop
+│   │   ├── shop/page.tsx     /shop — listing, filters, sort, paging
+│   │   ├── shop/[slug]/      /shop/<piece> — product page
+│   │   ├── wishlist/         /wishlist — shell
+│   │   └── cart/             /cart — shell
 │   ├── (auth)/               sign-in group: focused, chrome-light
 │   │   ├── layout.tsx
 │   │   └── login/page.tsx    /login
@@ -185,11 +197,13 @@ src/
 │
 ├── components/
 │   ├── ui/                   design system primitives, no business logic
-│   ├── layout/               header, footer, navigation
+│   ├── commerce/             product cards, grid, filters, selectors, drawers
+│   ├── layout/               header, footer, navigation, account menu
 │   └── shared/               cross-feature pieces (icons, empty states)
 │
 ├── features/
-│   └── auth/                 sign-in form, OTP input, sign-out control
+│   ├── auth/                 sign-in form, OTP input, sign-out control
+│   └── storefront/           page sections, URL query contract, mock data
 ├── actions/
 │   └── auth.ts               the only two authentication endpoints
 │
@@ -204,9 +218,9 @@ src/
 │   ├── env.ts                browser-safe environment access
 │   └── env.server.ts         server-only environment access (server-only)
 │
-├── config/                   app constants: brand, navigation
+├── config/                   app constants: brand, navigation, storefront
 ├── hooks/                    reusable client-side hooks
-└── types/                    shared types
+└── types/                    shared types, including the commerce contract
 ```
 
 `features/` holds one folder per business capability; `auth` is the first.
@@ -306,6 +320,25 @@ a request, so no form, URL or cookie can grant `ADMIN`; only the seed can.
 Full reasoning, the OTP lifecycle and the residual risks are in
 [docs/authentication/README.md](docs/authentication/README.md).
 
+**The storefront is server-rendered, and its data is not real yet.** The home
+page, the listing, the product page, the cards and the footer are all Server
+Components. Client components exist only where something needs state: the
+drawers, the search panel, the filter controls and the product selectors. No
+page or layout is a client component.
+
+Filters and sorting live in the **URL**, not in component state, so a filtered
+listing is shareable, survives back, and can be rendered on the server. Phase 5
+feeds the same parsed query to a database call instead of to an array.
+
+**No component imports a Prisma type.** Cards, grids and selectors take
+presentation types from `src/types/commerce.ts`, so the catalogue can be
+modelled however it needs to be without touching the interface.
+
+Where a feature is not built, its control stays in place and says so. There is
+no fake cart count, no invented search results and no button that appears to
+save something. Full reasoning is in
+[docs/storefront/README.md](docs/storefront/README.md).
+
 ### Accessibility
 
 Semantic landmarks throughout, one top-level heading per page with heading
@@ -328,7 +361,15 @@ Deliberately absent, each arriving in the phase that needs it:
   transport refuses to run in production
 - A customer account area. Signing in works; there is no profile or order
   history to show yet
-- Products, categories, inventory, product management
+- **The real catalogue.** Products, categories, variants, inventory and
+  product management. The storefront renders a mock layer in
+  `src/features/storefront/mock/`, which Phase 5 deletes
+- **Real product photography.** Development placeholders come from Unsplash
+- **Search results.** The search panel is built and states that nothing is
+  being queried
+- **Wishlist and bag persistence.** Both have their UI and both say they are
+  not connected
+- **Newsletter sending.** The form is built and disabled
 - Cart, wishlist, checkout, orders, payments
 - Coupons, reviews, shipping and email providers
 - Image upload and media storage
@@ -346,10 +387,11 @@ The database models for all of the above are also absent on purpose. See
 | 1     | Foundation, architecture, design system — **done**           |
 | 2     | Database foundation: PostgreSQL, Neon, Prisma — **done**     |
 | 3     | Phone-number authentication with one-time codes — **done**   |
-| 4     | Catalogue schema, listings, filtering, product detail pages  |
-| 5     | Cart and wishlist                                            |
-| 6     | Checkout, payments and orders                                |
-| 7     | Admin console: catalogue, inventory and order management     |
-| 8     | Coupons, reviews, full SEO and performance work              |
+| 4     | Storefront UI and commerce component system — **done**       |
+| 5     | Product, category and variant catalogue behind that UI       |
+| 6     | Bag and wishlist persistence                                 |
+| 7     | Checkout, payments and orders                                |
+| 8     | Admin console: catalogue, inventory and order management     |
+| 9     | Coupons, reviews, full SEO and performance work              |
 
 Each phase adds the database models its feature needs, through a migration.

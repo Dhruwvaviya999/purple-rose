@@ -3,47 +3,53 @@ import type { NavGroup, NavLink } from "@/types/navigation";
 /**
  * Navigation is configuration, not content.
  *
- * Product categories will be read from the database in a later phase and
- * merged into the shop navigation at render time. The entries below are only
- * the fixed structural routes of the application.
+ * Two rules hold here, and they are what keep the chrome honest:
+ *
+ * 1. **Every `href` is a route that exists.** `href` is typed against the
+ *    generated route map, so a link to a page nobody has built fails the
+ *    typecheck instead of giving a shopper a 404.
+ * 2. **Anything not built yet is a `note`, not a link.** Those render as
+ *    non-interactive text with the reason attached, so the footer never
+ *    advertises a policy page that is not written.
+ *
+ * Category links point at `/shop` with a `category` parameter, which the shop
+ * page already reads. They keep working unchanged when categories become
+ * database rows: only where the list comes from changes.
  */
 export const primaryNav: readonly NavLink[] = [
   { label: "Shop", href: "/shop" },
+  { label: "New in", href: "/shop?sort=newest" },
+  { label: "Sale", href: "/shop?sale=true" },
 ] as const;
-
-/**
- * Header utilities that are designed but not wired up yet. They render as
- * non-interactive controls so the shell never advertises behaviour it lacks.
- */
-export const headerPlaceholders = {
-  search: { label: "Search", note: "Search opens in a later release" },
-  wishlist: { label: "Wishlist", note: "Wishlist opens in a later release" },
-  cart: { label: "Cart", note: "Cart opens in a later release" },
-} as const;
 
 export const footerNav: readonly NavGroup[] = [
   {
     title: "Shop",
     items: [
-      { label: "All pieces", href: "/shop" },
-      { label: "New arrivals", note: "Published with the catalogue" },
-      { label: "Gift cards", note: "Published with the catalogue" },
+      { label: "Everything", href: "/shop" },
+      { label: "New in", href: "/shop?sort=newest" },
+      { label: "Cotton dresses", href: "/shop?category=cotton-dresses" },
+      { label: "Co-ord sets", href: "/shop?category=co-ord-sets" },
+      { label: "Short tops", href: "/shop?category=short-tops" },
+      { label: "Sale", href: "/shop?sale=true" },
     ],
   },
   {
     title: "Account",
     items: [
       { label: "Sign in", href: "/login" },
-      { label: "Orders", note: "Opens with customer accounts" },
-      { label: "Wishlist", note: "Opens with customer accounts" },
+      { label: "Wishlist", href: "/wishlist" },
+      { label: "Bag", href: "/cart" },
+      { label: "Orders", note: "Opens with checkout" },
     ],
   },
   {
     title: "Help",
     items: [
-      { label: "Shipping", note: "Policy pages land in a later phase" },
-      { label: "Returns", note: "Policy pages land in a later phase" },
-      { label: "Contact", note: "Policy pages land in a later phase" },
+      { label: "Size guide", note: "Published with the catalogue" },
+      { label: "Shipping", note: "Published with checkout" },
+      { label: "Returns", note: "Published with checkout" },
+      { label: "Contact", note: "Published with the policy pages" },
     ],
   },
 ] as const;

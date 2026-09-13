@@ -19,7 +19,11 @@ import { SignOutButton } from "@/features/auth/components/sign-out-button";
  * click, which is acceptable for a control this small.
  *
  * The admin link here is convenience, not security. `/admin` enforces the role
- * on the server whether or not this link is rendered.
+ * on the server whether or not this link is rendered, so a customer who guesses
+ * the URL gets no further than one who cannot see the link.
+ *
+ * Orders has no page yet and is shown as text with the reason attached, rather
+ * than as a link into nothing.
  */
 export async function AccountMenu() {
   const user = await getCurrentUser();
@@ -49,6 +53,21 @@ export async function AccountMenu() {
             {user.phoneNumber}
           </span>
         </p>
+
+        <Link
+          href="/wishlist"
+          className="block rounded-control px-3 py-2 font-sans text-sm text-ink transition-colors hover:bg-surface-strong hover:text-brand-strong"
+        >
+          Wishlist
+        </Link>
+
+        <span
+          title="Order history opens with checkout"
+          className="block px-3 py-2 font-sans text-sm text-ink-subtle"
+        >
+          Orders
+          <span className="sr-only"> — opens with checkout</span>
+        </span>
 
         {user.role === Role.ADMIN ? (
           <Link

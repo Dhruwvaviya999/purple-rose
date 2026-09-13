@@ -15,7 +15,7 @@ export function BrandWordmark({ className }: { className?: string }) {
     <Link
       href="/"
       className={cn(
-        "text-ink transition-colors hover:text-brand-strong",
+        "inline-block whitespace-nowrap py-1.5 text-ink transition-colors hover:text-brand-strong",
         className,
       )}
     >

@@ -98,6 +98,58 @@ export function AlertIcon(props: IconProps) {
   );
 }
 
+export function FilterIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 7h16M7 12h10M10 17h4" />
+    </Icon>
+  );
+}
+
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m9.5 6 6 6-6 6" />
+    </Icon>
+  );
+}
+
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m6 9.5 6 6 6-6" />
+    </Icon>
+  );
+}
+
+export function TruckIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 7.5h10.5v8H3z" />
+      <path d="M13.5 10.5H17l3 3v2h-6.5z" />
+      <circle cx="7" cy="17" r="1.6" />
+      <circle cx="16.5" cy="17" r="1.6" />
+    </Icon>
+  );
+}
+
+export function ReturnIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 9h11a4.5 4.5 0 0 1 0 9h-5" />
+      <path d="m7.5 5.5-3.5 3.5 3.5 3.5" />
+    </Icon>
+  );
+}
+
+export function StarIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m12 4.5 2.35 4.76 5.25.76-3.8 3.7.9 5.23L12 16.48l-4.7 2.47.9-5.23-3.8-3.7 5.25-.76Z" />
+    </Icon>
+  );
+}
+
 export function CompassIcon(props: IconProps) {
   return (
     <Icon {...props}>
