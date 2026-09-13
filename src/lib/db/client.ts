@@ -43,9 +43,39 @@ const globalForPrisma = globalThis as unknown as {
   purpleRosePrisma?: PrismaClient;
 };
 
-export const prisma: PrismaClient =
-  globalForPrisma.purpleRosePrisma ?? createPrismaClient();
+function getPrismaClient(): PrismaClient {
+  const existing = globalForPrisma.purpleRosePrisma;
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.purpleRosePrisma = prisma;
+  if (existing) {
+    return existing;
+  }
+
+  const client = createPrismaClient();
+
+  if (process.env.NODE_ENV !== "production") {
+    globalForPrisma.purpleRosePrisma = client;
+  }
+
+  return client;
 }
+
+/**
+ * Construction is deferred until the first query.
+ *
+ * Importing this module must never require a database, because `next build`
+ * loads every route module to collect its metadata, and Prisma Client is also
+ * generated during builds that have no `DATABASE_URL` at all. Building the
+ * client eagerly would make a missing connection string a build failure
+ * instead of a runtime condition the health endpoint can report.
+ *
+ * The proxy forwards to the real client on first use and binds methods to it,
+ * so callers see an ordinary `PrismaClient`.
+ */
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, property) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, property) as unknown;
+
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});

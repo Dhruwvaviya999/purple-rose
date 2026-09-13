@@ -1,77 +1,45 @@
 import type { Metadata } from "next";
+import type { Route } from "next";
+import { redirect } from "next/navigation";
 
-import { Button, ButtonLink } from "@/components/ui/button";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import {
+  defaultDestinationForRole,
+  safeRedirectPath,
+} from "@/lib/auth/redirect";
 import { Card } from "@/components/ui/card";
-import { Field, FieldHint, Input, Label } from "@/components/ui/input";
-import { Heading, Text } from "@/components/ui/typography";
+import { LoginForm } from "@/features/auth/components/login-form";
 
 export const metadata: Metadata = {
   title: "Sign in",
   description:
-    "Sign in to Purple Rose with your phone number. Authentication opens in a later release.",
+    "Sign in to Purple Rose with your phone number and a one-time code.",
   robots: { index: false, follow: false },
 };
 
-const NOTICE_ID = "sign-in-availability";
-
 /**
- * Structural placeholder for phone + OTP sign-in.
+ * Sign-in page. A Server Component: it decides whether the visitor needs to
+ * sign in at all, then hands the interactive part to a client component.
  *
- * The form shape is rendered so the control styles are exercised and the
- * layout is settled, but the whole fieldset is disabled and there is no form
- * action: no credential is collected and no request is made.
+ * Someone already signed in is sent on rather than shown the form again.
  */
-export default function LoginPage() {
+export default async function LoginPage(props: PageProps<"/login">) {
+  const { next } = await props.searchParams;
+  const requested = Array.isArray(next) ? next[0] : next;
+
+  // Checked here and again inside the action. This one only decides where an
+  // already-authenticated visitor lands; it is not the security boundary.
+  const destination = safeRedirectPath(requested);
+
+  const user = await getCurrentUser();
+
+  if (user) {
+    redirect((destination ?? defaultDestinationForRole(user.role)) as Route);
+  }
+
   return (
     <Card variant="raised" padding="lg" className="w-full max-w-md">
-      <Heading as="h1" level="lg">
-        Sign in
-      </Heading>
-
-      <Text size="sm" className="mt-3">
-        Purple Rose accounts use your phone number and a one-time code. No
-        password to remember.
-      </Text>
-
-      <div className="mt-8">
-        <fieldset disabled aria-describedby={NOTICE_ID} className="space-y-4">
-          <legend className="sr-only">Phone number sign-in</legend>
-
-          <Field>
-            <Label htmlFor="phone">Phone number</Label>
-            <Input
-              id="phone"
-              name="phone"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="Mobile number"
-            />
-            <FieldHint>
-              We will text a six-digit code. Standard message rates apply.
-            </FieldHint>
-          </Field>
-
-          <Button size="lg" className="w-full">
-            Send code
-          </Button>
-        </fieldset>
-
-        <p
-          id={NOTICE_ID}
-          role="note"
-          className="mt-5 rounded-control border border-line bg-surface px-4 py-3 font-sans text-sm leading-relaxed text-ink-muted"
-        >
-          Sign-in is not switched on yet. Accounts and one-time codes arrive
-          with the authentication release.
-        </p>
-      </div>
-
-      <div className="mt-7 border-t border-line pt-6">
-        <ButtonLink href="/" variant="link" size="sm" className="px-0">
-          Return to Purple Rose
-        </ButtonLink>
-      </div>
+      <LoginForm next={destination ?? undefined} />
     </Card>
   );
 }

@@ -1,13 +1,15 @@
 import { headerPlaceholders } from "@/config/navigation";
-import { BagIcon, HeartIcon, SearchIcon, UserIcon } from "@/components/shared/icons";
-import { IconButton, IconLink } from "@/components/ui/icon-button";
+import { BagIcon, HeartIcon, SearchIcon } from "@/components/shared/icons";
+import { IconButton } from "@/components/ui/icon-button";
+import { AccountMenu } from "./account-menu";
 
 /**
  * Header utility controls.
  *
- * Account points at the sign-in route, which exists. Search, wishlist and cart
- * are designed but not implemented, so they render as `aria-disabled` controls
- * with an explanatory accessible name rather than links to nowhere.
+ * Account is live: it signs you in, or shows who is signed in. Search,
+ * wishlist and cart are designed but not implemented, so they render as
+ * `aria-disabled` controls with an explanatory accessible name rather than
+ * links to nowhere.
  */
 export function HeaderActions() {
   return (
@@ -30,9 +32,7 @@ export function HeaderActions() {
         <HeartIcon />
       </IconButton>
 
-      <IconLink href="/login" label="Account">
-        <UserIcon />
-      </IconLink>
+      <AccountMenu />
 
       <IconButton
         label={`${headerPlaceholders.cart.label} — ${headerPlaceholders.cart.note}`}

@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/auth/current-user";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Heading, Text } from "@/components/ui/typography";
@@ -7,6 +8,12 @@ import { Heading, Text } from "@/components/ui/typography";
  *
  * A structural placeholder: no store data is connected, so no metrics are
  * shown. Reporting appears once orders and inventory exist.
+ *
+ * The role is checked here as well as in the layout. That is not redundant.
+ * A layout and the page beneath it render concurrently, so a layout that
+ * throws does not reliably stop the page from producing output, and the page
+ * payload can still reach the client. Every admin page must make its own
+ * check, and every admin query must be guarded where the data is read.
  */
 const upcoming = [
   {
@@ -27,7 +34,9 @@ const upcoming = [
   },
 ] as const;
 
-export default function AdminOverviewPage() {
+export default async function AdminOverviewPage() {
+  await requireAdmin("/admin");
+
   return (
     <div className="space-y-10">
       <div className="max-w-2xl">

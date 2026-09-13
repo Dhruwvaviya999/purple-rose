@@ -12,6 +12,11 @@
  * There is no product, category or customer data here. The catalogue does not
  * exist yet, and inventing sample records would misrepresent what the store
  * actually contains.
+ *
+ * This is the only sanctioned way to create an administrator. Roles are never
+ * accepted from a request, so no sign-in, form or URL can grant ADMIN; it is
+ * set here, by an operator who already controls the environment and the
+ * database, or by a direct database change.
  */
 import { config as loadEnvFiles } from "dotenv";
 
@@ -21,6 +26,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient } from "../src/generated/prisma/client";
 import { Role } from "../src/generated/prisma/enums";
+import { normalisePhoneNumber } from "../src/lib/auth/phone";
 
 /** Optional. When unset, the admin step is skipped rather than guessed. */
 const ADMIN_PHONE_ENV = "SEED_ADMIN_PHONE_NUMBER";
@@ -39,9 +45,9 @@ function requireDatabaseUrl(): string {
 }
 
 async function seedAdminUser(prisma: PrismaClient): Promise<void> {
-  const phoneNumber = process.env[ADMIN_PHONE_ENV]?.trim();
+  const configured = process.env[ADMIN_PHONE_ENV]?.trim();
 
-  if (!phoneNumber) {
+  if (!configured) {
     console.info(
       `- admin user: skipped, ${ADMIN_PHONE_ENV} is not set. ` +
         `Set it to an E.164 number (for example +919876543210) to create one.`,
@@ -49,12 +55,25 @@ async function seedAdminUser(prisma: PrismaClient): Promise<void> {
     return;
   }
 
+  // Normalised with exactly the same function the sign-in flow uses. Storing
+  // the raw value would create a row that no sign-in could ever match: someone
+  // typing that number would be normalised to a different string, miss this
+  // row, and be given a fresh CUSTOMER account instead.
+  const phone = normalisePhoneNumber(configured);
+
+  if (!phone) {
+    throw new Error(
+      `${ADMIN_PHONE_ENV} is not a valid phone number. ` +
+        `Use international format, for example +919876543210.`,
+    );
+  }
+
   const user = await prisma.user.upsert({
-    where: { phoneNumber },
-    // An existing row is left alone apart from its role, so a re-run never
-    // overwrites a name someone has since set.
+    where: { phoneNumber: phone.e164 },
+    // An existing row keeps its name; only the role is asserted, so a re-run
+    // never overwrites something a person has since set.
     update: { role: Role.ADMIN },
-    create: { phoneNumber, role: Role.ADMIN, name: "Purple Rose Admin" },
+    create: { phoneNumber: phone.e164, role: Role.ADMIN },
     select: { id: true, phoneNumber: true, role: true },
   });
 

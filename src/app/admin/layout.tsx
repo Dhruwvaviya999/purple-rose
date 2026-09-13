@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { siteConfig } from "@/config/site";
+import { requireAdmin } from "@/lib/auth/current-user";
 import { BrandWordmark } from "@/components/layout/brand-wordmark";
+import { SignOutButton } from "@/features/auth/components/sign-out-button";
 import { Badge } from "@/components/ui/badge";
 import { Container } from "@/components/ui/container";
 
@@ -30,7 +32,13 @@ const adminSections = [
   "Reviews",
 ] as const;
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
+export default async function AdminLayout({ children }: { children: ReactNode }) {
+  // The real gate. `proxy.ts` turns away requests with no session cookie, but
+  // that is an optimistic filter with no idea who the cookie belongs to. This
+  // resolves the session against the database and enforces the role, so a
+  // customer with a perfectly valid session still cannot get in.
+  const admin = await requireAdmin("/admin");
+
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <header className="border-b border-line bg-canvas">
@@ -39,12 +47,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <BrandWordmark />
             <Badge variant="neutral">Admin</Badge>
           </div>
-          <Link
-            href="/"
-            className="font-sans text-sm font-medium text-ink-muted transition-colors hover:text-brand-strong"
-          >
-            View store
-          </Link>
+          <div className="flex items-center gap-5">
+            <span className="hidden font-sans text-sm text-ink-muted sm:inline">
+              {admin.phoneNumber}
+            </span>
+            <Link
+              href="/"
+              className="font-sans text-sm font-medium text-ink-muted transition-colors hover:text-brand-strong"
+            >
+              View store
+            </Link>
+            <SignOutButton />
+          </div>
         </Container>
       </header>
 

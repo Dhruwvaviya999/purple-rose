@@ -47,4 +47,85 @@ model User {
 
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  sessions Session[]
+}
+
+/// A one-time code issued to a phone number, awaiting verification.
+///
+/// Separate from `User` because this is short-lived verification state with
+/// its own lifecycle, and because a challenge exists before we know whether
+/// the number belongs to an account. Rows are disposable: nothing references
+/// them once consumed or expired.
+///
+/// The plaintext code is never stored. `codeHash` is an HMAC keyed with a
+/// server secret, so a database leak alone does not let an attacker recover a
+/// six-digit code by brute force.
+model OtpChallenge {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// Normalised E.164, matching the format used by `User.phoneNumber`.
+  /// Not a foreign key: a challenge can precede the account it creates.
+  phoneNumber String @db.VarChar(16)
+
+  /// Hex-encoded HMAC-SHA256 of the code, keyed with AUTH_SECRET.
+  codeHash String @db.VarChar(64)
+
+  expiresAt DateTime @db.Timestamptz(3)
+
+  /// Verification attempts made so far, and the ceiling fixed when the
+  /// challenge was created, so changing the limit never affects codes that
+  /// are already in flight.
+  attempts    Int @default(0)
+  maxAttempts Int
+
+  /// Set once when verification succeeds. A consumed challenge is dead; this
+  /// is what prevents a code being replayed.
+  consumedAt DateTime? @db.Timestamptz(3)
+
+  /// Hex-encoded HMAC of the requesting IP, used only to rate limit. The raw
+  /// address is never stored, so the column cannot be read back as location
+  /// data. Nullable because an address is not always available.
+  requestIpHash String? @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  /// Serves the resend cooldown and the per-number hourly cap, both of which
+  /// read the most recent challenges for one number.
+  @@index([phoneNumber, createdAt])
+  /// Serves the per-IP hourly cap.
+  @@index([requestIpHash, createdAt])
+  /// Serves expiry sweeps.
+  @@index([expiresAt])
+}
+
+/// A signed-in session, one row per device.
+///
+/// Sessions are database rows rather than self-contained tokens so they can be
+/// revoked: logging out, or an operator disabling an account, takes effect on
+/// the very next request. The browser holds an opaque random token and the
+/// database stores only its SHA-256 digest, so a database leak does not hand
+/// anyone a usable session.
+model Session {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// Hex-encoded SHA-256 of the opaque session token held by the client.
+  /// Unique so a token identifies exactly one session.
+  tokenHash String @unique @db.VarChar(64)
+
+  userId String @db.Uuid
+  /// Deleting a user takes their sessions with them.
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime  @db.Timestamptz(3)
+  /// Set on logout or administrative revocation. Checked on every request.
+  revokedAt DateTime? @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  /// Serves "list or revoke everything for this user".
+  @@index([userId])
+  /// Serves expiry sweeps.
+  @@index([expiresAt])
 }

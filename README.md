@@ -6,12 +6,14 @@ The application is built as a single Next.js project: the storefront, the
 customer account area, the admin console and the backend all live here. There
 is no separate API service.
 
-> **Current phase: Phase 2 — database foundation.** Complete.
+> **Current phase: Phase 3 — authentication.** Complete.
 >
 > - **Phase 1** built the project foundation: routing boundaries, design
 >   tokens, UI primitives and the store shell.
 > - **Phase 2** added the database foundation: PostgreSQL on Neon through
->   Prisma, one migration, seed infrastructure and a server-only data layer.
+>   Prisma, migrations, seed infrastructure and a server-only data layer.
+> - **Phase 3** added authentication: phone number plus one-time code, with
+>   database-backed sessions, roles and a protected admin area.
 >
 > No commerce functionality is implemented yet. See
 > [What is not built yet](#what-is-not-built-yet).
@@ -30,11 +32,12 @@ is no separate API service.
 | Linting         | ESLint 9 with `eslint-config-next`           |
 | Database        | PostgreSQL on Neon                           |
 | ORM             | Prisma 7 with the `@prisma/adapter-pg` driver |
+| Auth            | Phone plus one-time code, built on Next.js primitives |
+| Validation      | Zod 4, server-side                           |
 | Package manager | pnpm                                         |
 | Hosting target  | Vercel                                       |
 
-Planned for later phases: phone-number sign-in with one-time codes, then the
-catalogue and the rest of the store.
+Planned for later phases: the catalogue, then the rest of the store.
 
 There is no Docker in this project, and there will not be one. It runs directly
 on Node.js with pnpm, and connects to Neon over the network. See
@@ -52,9 +55,11 @@ on Node.js with pnpm, and connects to Neon over the network. See
 ```bash
 pnpm install
 cp .env.example .env.local
-# set DATABASE_URL in .env.local, then:
+# set DATABASE_URL and AUTH_SECRET in .env.local, then:
 pnpm db:migrate
 ```
+
+Generate a secret with `openssl rand -base64 32`.
 
 `pnpm install` also generates Prisma Client, so a fresh clone is ready to build.
 Full database setup is in
@@ -87,6 +92,13 @@ everywhere else.
 Prisma 7 does not regenerate the client when you migrate. After editing
 `prisma/schema.prisma`, run `pnpm db:generate`.
 
+Verification:
+
+```bash
+pnpm check:auth          # authentication logic; no database needed
+pnpm check:auth:db       # full auth flows; needs DATABASE_URL and AUTH_SECRET
+```
+
 ## Environment setup
 
 ```bash
@@ -98,9 +110,14 @@ One variable is required:
 | Variable       | Required | Purpose                                        |
 | -------------- | -------- | ---------------------------------------------- |
 | `DATABASE_URL` | yes      | Neon **pooled** connection string, used at runtime |
+| `AUTH_SECRET`  | yes      | Key used to hash one-time codes. At least 32 characters |
 | `DIRECT_URL`   | no       | Neon **direct** connection string, used by the Prisma CLI for schema changes |
 | `NEXT_PUBLIC_APP_URL` | no | Canonical origin; defaults to `http://localhost:3000` |
-| `SEED_ADMIN_PHONE_NUMBER` | no | E.164 number the seed promotes to `ADMIN` |
+| `SEED_ADMIN_PHONE_NUMBER` | no | Phone number the seed promotes to `ADMIN` |
+
+The authentication settings (code lifetime, attempt limits, cooldowns, session
+lifetime) all have safe defaults and are listed in
+[docs/authentication/README.md](docs/authentication/README.md#environment-variables).
 
 Everything else in `.env.example` is commented out and belongs to a later
 phase, so a missing value never looks like a bug.
@@ -120,8 +137,8 @@ Three rules hold for the whole project:
 | ------------- | ----------------------------------------------- |
 | `/`           | Storefront home — brand shell                   |
 | `/shop`       | Catalogue — empty until products exist          |
-| `/login`      | Sign-in placeholder, outside the store chrome   |
-| `/admin`      | Admin overview, never indexed                   |
+| `/login`      | Phone plus one-time code sign-in, public        |
+| `/admin`      | Admin overview. **ADMIN only**, never indexed   |
 | `/api/health` | Liveness and database reachability probe        |
 | `/robots.txt` | Crawl rules, generated from `src/app/robots.ts` |
 
@@ -134,9 +151,17 @@ prisma/
 └── seed.ts                   idempotent seed, no sample catalogue
 
 prisma7.config.ts             Prisma 7 CLI config: URLs, migration path, seed
-docs/database/README.md       database architecture, decisions and workflows
+
+scripts/
+├── check-auth.ts             auth logic checks, no database needed
+└── check-auth-db.ts          full auth flow checks against a real database
+
+docs/
+├── database/README.md        database architecture, decisions and workflows
+└── authentication/README.md  auth architecture, OTP lifecycle, security notes
 
 src/
+├── proxy.ts                  optimistic request guard (Next.js 16 convention)
 ├── app/                      routing only — thin files that compose features
 │   ├── (store)/              storefront group: header + footer chrome
 │   │   ├── layout.tsx        store shell, skip link
@@ -163,12 +188,15 @@ src/
 │   ├── layout/               header, footer, navigation
 │   └── shared/               cross-feature pieces (icons, empty states)
 │
-├── features/                 one folder per business capability (see README)
-├── actions/                  Server Actions — the write path (see README)
+├── features/
+│   └── auth/                 sign-in form, OTP input, sign-out control
+├── actions/
+│   └── auth.ts               the only two authentication endpoints
 │
 ├── generated/prisma/         Prisma Client — generated on install, git-ignored
 │
 ├── lib/
+│   ├── auth/                 sessions, roles, OTP crypto, phone normalisation
 │   ├── db/client.ts          the single Prisma Client (server-only)
 │   ├── utils/                framework-agnostic helpers
 │   ├── services/             the only layer that queries the database
@@ -181,9 +209,9 @@ src/
 └── types/                    shared types
 ```
 
-`features/`, `actions/`, `lib/services/` and `lib/validations/` are still
-empty. Each holds a README that states the rules for what goes in it, so the
-conventions are fixed before the first feature is written.
+`features/` holds one folder per business capability; `auth` is the first.
+Each layer keeps a README stating the rules for what goes in it, so the
+conventions stay fixed as features arrive.
 
 ## Architecture overview
 
@@ -257,6 +285,27 @@ the features exist would be guessing, and every wrong guess becomes a migration
 against live data. Product categories will be database rows, never values
 hardcoded in the application.
 
+**Signing in is a phone number and a one-time code.** There are no passwords
+anywhere in the system. A code is hashed with a keyed HMAC before storage, is
+valid for five minutes, allows five wrong guesses, and cannot be replayed once
+used. Every rate limit is counted in the database rather than in memory,
+because on Vercel each request may reach a different instance.
+
+**Sessions are database rows.** The browser holds an opaque random token and
+the database stores only its digest, so logging out or revoking an account
+takes effect on the very next request. The cookie carries no claims at all:
+nothing in it can be read or altered to gain authority.
+
+**Authorisation runs on the server, in four layers.** `proxy.ts` turns away
+requests to `/admin` with no session cookie, but it is an optimistic filter
+that never reads the database and is never the boundary. The admin layout and
+the admin page each call `requireAdmin()`, which resolves the session and
+enforces the role. Hiding the admin link is cosmetic. Roles are never read from
+a request, so no form, URL or cookie can grant `ADMIN`; only the seed can.
+
+Full reasoning, the OTP lifecycle and the residual risks are in
+[docs/authentication/README.md](docs/authentication/README.md).
+
 ### Accessibility
 
 Semantic landmarks throughout, one top-level heading per page with heading
@@ -275,8 +324,10 @@ Layouts are composed to reflow rather than to shrink.
 
 Deliberately absent, each arriving in the phase that needs it:
 
-- Authentication: one-time codes, sessions, sign-in. The `User` table exists;
-  nothing writes to it yet
+- SMS delivery. Codes are written to the server log in development, and that
+  transport refuses to run in production
+- A customer account area. Signing in works; there is no profile or order
+  history to show yet
 - Products, categories, inventory, product management
 - Cart, wishlist, checkout, orders, payments
 - Coupons, reviews, shipping and email providers
@@ -294,7 +345,7 @@ The database models for all of the above are also absent on purpose. See
 | ----- | ------------------------------------------------------------ |
 | 1     | Foundation, architecture, design system — **done**           |
 | 2     | Database foundation: PostgreSQL, Neon, Prisma — **done**     |
-| 3     | Phone-number authentication with one-time codes              |
+| 3     | Phone-number authentication with one-time codes — **done**   |
 | 4     | Catalogue schema, listings, filtering, product detail pages  |
 | 5     | Cart and wishlist                                            |
 | 6     | Checkout, payments and orders                                |
