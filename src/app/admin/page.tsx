@@ -85,6 +85,39 @@ export default async function AdminOverviewPage() {
             detail="Across every product"
           />
         </div>
+
+        {/* The shared attribute tables. Separated from the counts above
+            because they are infrastructure rather than inventory: every
+            product draws from them, and a retired colour changes what can be
+            built rather than what is in stock. */}
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <MetricTile
+            label="Colours"
+            value={metrics.colors.active}
+            detail={`offered for new variants, of ${metrics.colors.total} in the palette`}
+            href={
+              <Link
+                href="/admin/colors"
+                className="inline-block py-1.5 font-sans text-xs text-brand underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+              >
+                Manage colours
+              </Link>
+            }
+          />
+          <MetricTile
+            label="Sizes"
+            value={metrics.sizes.active}
+            detail={`offered for new variants, of ${metrics.sizes.total} in the run`}
+            href={
+              <Link
+                href="/admin/sizes"
+                className="inline-block py-1.5 font-sans text-xs text-brand underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+              >
+                Manage sizes
+              </Link>
+            }
+          />
+        </div>
       </section>
 
       <div className="grid gap-6 xl:grid-cols-2">
@@ -112,7 +145,9 @@ export default async function AdminOverviewPage() {
                   <div className="min-w-0">
                     <Link
                       href={`/admin/products/${variant.productId}`}
-                      className="font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+                      // Padded to clear the 24px minimum: an inline link sits
+                      // in a 17px line box, which is not a reliable tap target.
+                      className="inline-block py-1 font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
                     >
                       {variant.productName}
                     </Link>
@@ -166,7 +201,7 @@ export default async function AdminOverviewPage() {
                 >
                   <Link
                     href={`/admin/products/${product.id}`}
-                    className="min-w-0 font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+                    className="inline-block min-w-0 py-1 font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
                   >
                     {product.name}
                   </Link>
@@ -199,9 +234,8 @@ export default async function AdminOverviewPage() {
             Photography is managed as URLs on an approved host.
           </li>
           <li>
-            <span className="font-medium text-ink">Colours and sizes.</span>{" "}
-            Managed through the seed; variants use the existing palette and size
-            run.
+            <span className="font-medium text-ink">Orders downstream.</span>{" "}
+            Cart, wishlist, checkout and everything that follows an order.
           </li>
         </ul>
       </AdminPanel>

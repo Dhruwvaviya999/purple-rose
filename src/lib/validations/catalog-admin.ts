@@ -435,3 +435,130 @@ export const imageReorderSchema = z.object({
 
 export type CreateImageInput = z.infer<typeof createImageSchema>;
 export type UpdateImageInput = z.infer<typeof updateImageSchema>;
+
+/* ------------------------------------------------------------------ *
+ * Colours and sizes
+ * ------------------------------------------------------------------ */
+
+/**
+ * A CSS hex colour, `#rrggbb`.
+ *
+ * Deliberately narrow. The value is rendered as an inline `background-color`
+ * on a swatch, so the safe thing is to accept one unambiguous shape rather
+ * than everything CSS permits: no `rgb()`, no named colours, no `url()`, no
+ * `var()`, and nothing that could carry a function call or a semicolon into a
+ * style attribute. Six hex digits cannot express anything but a colour.
+ *
+ * Short form (`#abc`) is expanded rather than rejected, because it is a real
+ * thing to paste and the column stores one canonical form.
+ */
+export const hexColorSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(
+    /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/,
+    "Enter a hex colour such as #a87bc9.",
+  )
+  .transform((value) =>
+    value.length === 4
+      ? `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`
+      : value,
+  );
+
+const colorFields = {
+  name: z
+    .string()
+    .trim()
+    .min(2, "Enter a colour name.")
+    .max(60, "That name is too long."),
+  /**
+   * The URL key the shop's colour filter carries: `?colour=dusty-plum`.
+   *
+   * Stable. Renaming a colour does not rewrite it, because a changed slug
+   * silently breaks every filtered link anyone has shared.
+   */
+  slug: slugSchema.max(60, "That slug is too long."),
+  hex: hexColorSchema,
+  position: positionSchema,
+  isActive: checkbox,
+};
+
+export const createColorSchema = z.object(colorFields);
+
+export const updateColorSchema = z.object({
+  ...colorFields,
+  id: idSchema,
+  expectedUpdatedAt: expectedUpdatedAtSchema,
+});
+
+export const attributeActivationSchema = z.object({
+  id: idSchema,
+  isActive: checkbox,
+});
+
+export const attributeReorderSchema = z.object({
+  id: idSchema,
+  direction: z.enum(["up", "down"]),
+});
+
+export type CreateColorInput = z.infer<typeof createColorSchema>;
+export type UpdateColorInput = z.infer<typeof updateColorSchema>;
+
+/**
+ * A body measurement in whole centimetres.
+ *
+ * Optional, and blank means **not measured** rather than zero. A shop that has
+ * not put a tape round its garments should not have to invent numbers to save
+ * a name change, and storing 0 would read as "measured, and it is nothing".
+ */
+const measurementSchema = z
+  .string()
+  .trim()
+  .transform((value) => (value.length === 0 ? null : value))
+  .refine(
+    (value) => value === null || /^\d{1,3}$/.test(value),
+    "Enter a measurement in whole centimetres, or leave it blank.",
+  )
+  .transform((value) => (value === null ? null : Number(value)));
+
+const sizeFields = {
+  /**
+   * The stable identifier: `XS`, `M`, `FREE`.
+   *
+   * Upper-cased on the way in so `m` and `M` cannot become two sizes. It is
+   * what a SKU is built from and what `?size=m` resolves against, so renaming
+   * the size does not touch it.
+   */
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .min(1, "Enter a size code.")
+    .max(16, "A size code is at most 16 characters.")
+    .regex(
+      /^[A-Z0-9][A-Z0-9-]*$/,
+      "Use letters, numbers and hyphens, for example XS, M or 32.",
+    ),
+  name: z
+    .string()
+    .trim()
+    .min(2, "Enter a size name.")
+    .max(40, "That name is too long."),
+  position: positionSchema,
+  isActive: checkbox,
+  bustCm: measurementSchema,
+  waistCm: measurementSchema,
+  hipCm: measurementSchema,
+};
+
+export const createSizeSchema = z.object(sizeFields);
+
+export const updateSizeSchema = z.object({
+  ...sizeFields,
+  id: idSchema,
+  expectedUpdatedAt: expectedUpdatedAtSchema,
+});
+
+export type CreateSizeInput = z.infer<typeof createSizeSchema>;
+export type UpdateSizeInput = z.infer<typeof updateSizeSchema>;

@@ -169,3 +169,27 @@ export function revalidateAdminProduct(id: string): void {
   revalidatePath("/admin/products");
   revalidatePath("/admin");
 }
+
+/**
+ * What to refresh after a colour or size changes.
+ *
+ * Attributes are shared infrastructure, so a change reaches further than a
+ * product edit does. A colour is a swatch on every product page it appears on
+ * and an option in the shop's colour filter; a size is in the size selector
+ * and the size facet. Both are also the choices two admin screens offer when
+ * building variants.
+ *
+ * `"/"` as a **layout** covers the storefront, because the filter panel and
+ * the product pages are all inside the store shell. The product editor is
+ * listed explicitly: it is where a newly created colour has to appear, and
+ * §32's requirement is that it must not stay absent.
+ */
+export function revalidateAttributeRoutes(kind: "colors" | "sizes"): void {
+  revalidatePath(`/admin/${kind}`);
+  // The product editor offers these as choices, and the dashboard counts them.
+  revalidatePath("/admin/products/[id]", "page");
+  revalidatePath("/admin/products/new");
+  revalidatePath("/admin");
+  // Swatches, size selectors and both facets all live under the store shell.
+  revalidatePath("/", "layout");
+}

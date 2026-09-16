@@ -440,7 +440,7 @@ export function ProductForm({ options, product }: ProductFormProps) {
       <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center justify-end gap-3 border-t border-line bg-canvas/95 px-4 py-3 backdrop-blur-none sm:mx-0 sm:rounded-card sm:border sm:px-5">
         <Link
           href="/admin/products"
-          className="font-sans text-sm text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+          className="inline-block py-1 font-sans text-sm text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
         >
           Cancel
         </Link>

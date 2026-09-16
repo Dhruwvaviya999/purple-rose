@@ -18,8 +18,10 @@
     "check:auth:db": "tsx --conditions=react-server scripts/check-auth-db.ts",
     "check:catalog": "tsx --conditions=react-server scripts/check-catalog.ts",
     "check:catalog:db": "tsx --conditions=react-server scripts/check-catalog-db.ts",
+    "check:attributes": "tsx --conditions=react-server scripts/check-attributes.ts",
     "check:admin": "tsx --conditions=react-server scripts/check-admin.ts",
-    "check:admin:http": "tsx --conditions=react-server scripts/check-admin-http.ts"
+    "check:admin:http": "tsx --conditions=react-server scripts/check-admin-http.ts",
+    "check:ui": "tsx --conditions=react-server scripts/check-admin-ui.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
@@ -41,6 +43,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "playwright": "1.50.1",
     "prisma": "^7.10.0",
     "server-only": "^0.0.1",
     "tailwindcss": "^4",

@@ -17,14 +17,20 @@ import { cn } from "@/lib/utils/cn";
  * information architecture; now that some of them are real, the rest are gone.
  * A menu that mostly does not work teaches people not to trust the menu.
  *
- * Colours and sizes are not here. They are managed through the seed, which is
- * a real limitation and is written down in `docs/admin-catalog/README.md`
- * rather than papered over with a link to a page that does not exist.
+ * Colours and sizes joined in Phase 7. Before that they were seed-only, which
+ * was recorded as a limitation rather than papered over with a link to a page
+ * that did not exist.
+ *
+ * The row scrolls horizontally below `lg` rather than wrapping, so five
+ * sections do not push the page content down a phone screen; each one keeps a
+ * full-size tap target while it does.
  */
 const sections: readonly { href: Route; label: string; description: string }[] = [
   { href: "/admin", label: "Overview", description: "Catalogue at a glance" },
   { href: "/admin/products", label: "Products", description: "Create, edit and publish" },
   { href: "/admin/categories", label: "Collections", description: "Order and visibility" },
+  { href: "/admin/colors", label: "Colours", description: "The shared palette" },
+  { href: "/admin/sizes", label: "Sizes", description: "The shared size run" },
 ];
 
 export function AdminNav() {

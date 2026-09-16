@@ -31,6 +31,11 @@ import { prisma } from "@/lib/db/client";
 | `category-service.ts`  | Active categories: navigation, tiles, lookup, sitemap      |
 | `admin/`               | The catalogue **write** path, plus the reads admin screens need |
 
+Inside `admin/`: `product-`, `category-`, `variant-`, `image-`, `color-` and
+`size-admin-service.ts`, plus `catalog-dashboard-service.ts` for the overview
+counts and `admin-result.ts` for the shared result type. One file per thing
+being managed, rather than one catalogue service holding all of it.
+
 `admin/` is a separate folder, not a set of extra exports on the two services
 above, and that separation is load-bearing. The public services exist to make
 drafts and archived products unreachable — every query they build starts with

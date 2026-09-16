@@ -6,7 +6,7 @@ The application is built as a single Next.js project: the storefront, the
 customer account area, the admin console and the backend all live here. There
 is no separate API service.
 
-> **Current phase: Phase 6 — admin catalogue management.** Complete.
+> **Current phase: Phase 7 — admin attributes, and a real browser pass.** Complete.
 >
 > - **Phase 1** built the project foundation: routing boundaries, design
 >   tokens, UI primitives and the store shell.
@@ -22,9 +22,12 @@ is no separate API service.
 > - **Phase 6** built the admin area that manages it: product and collection
 >   screens, variants and stock, photography, publishing and archiving, all
 >   behind server-side authorisation.
+> - **Phase 7** added colour and size management, so the catalogue no longer
+>   depends on the seed for anything, and closed Phase 6's outstanding
+>   verification gap with a real headless-browser pass.
 >
-> The catalogue is edited through `/admin`, not by rewriting the seed. See
-> [Phase 6 — admin catalogue management](#phase-6--admin-catalogue-management).
+> The catalogue is edited entirely through `/admin`. See
+> [Phase 7 — admin attributes](#phase-7--admin-attributes).
 
 ---
 
@@ -109,8 +112,10 @@ pnpm check:auth          # authentication logic; no database needed
 pnpm check:auth:db       # full auth flows; needs DATABASE_URL and AUTH_SECRET
 pnpm check:catalog       # catalogue logic and seed content; no database needed
 pnpm check:catalog:db    # listing, filters, facets, search; needs DATABASE_URL
+pnpm check:attributes    # colours and sizes; needs DATABASE_URL
 pnpm check:admin         # admin mutations and the guard audit; needs DATABASE_URL
 pnpm check:admin:http    # admin access control; needs a running server as well
+pnpm check:ui            # the admin UI in a real browser; needs a running server
 ```
 
 `pnpm check:catalog:db` re-runs the catalogue seed to prove that doing so
@@ -118,14 +123,22 @@ changes nothing. `pnpm check:admin` creates and deletes its own records, and
 `pnpm check:admin:http` briefly archives one seeded product and restores it.
 All three write, so run them against a development database.
 
-`pnpm check:admin:http` needs the app running. Start it first, or point it
-somewhere else:
+`pnpm check:admin:http` and `pnpm check:ui` need the app running. Start it
+first, or point them somewhere else:
 
 ```bash
 pnpm build && pnpm start
 pnpm check:admin:http
+pnpm check:ui
 # or
-CHECK_BASE_URL=http://localhost:3100 pnpm check:admin:http
+CHECK_BASE_URL=http://localhost:3100 pnpm check:ui
+```
+
+`pnpm check:ui` drives a real headless Chromium. The browser binary is not in
+the repository; install it once with:
+
+```bash
+pnpm dlx playwright@1.50.1 install chromium
 ```
 
 ## Environment setup
@@ -177,6 +190,12 @@ Three rules hold for the whole project:
 | `/admin/categories`    | Collections: list, reorder, switch on and off         |
 | `/admin/categories/new` | Create a collection                                  |
 | `/admin/categories/[id]` | Edit a collection                                   |
+| `/admin/colors`        | The shared palette: swatch, hex, usage, order, on/off  |
+| `/admin/colors/new`    | Create a colour                                       |
+| `/admin/colors/[id]`   | Edit a colour                                         |
+| `/admin/sizes`         | The shared size run: code, measurements, order, on/off |
+| `/admin/sizes/new`     | Create a size                                         |
+| `/admin/sizes/[id]`    | Edit a size                                           |
 | `/api/health`  | Liveness and database reachability probe                       |
 | `/robots.txt`  | Crawl rules, generated from `src/app/robots.ts`                |
 | `/sitemap.xml` | Public pages, active categories and active products            |
@@ -204,14 +223,17 @@ scripts/
 ├── check-catalog.ts          catalogue logic and seed content, no database
 ├── check-catalog-db.ts       listing, filters, facets and search, live database
 ├── check-admin.ts            admin mutations, plus the "every action is guarded" audit
-└── check-admin-http.ts       admin access control, against a running server
+├── check-admin-http.ts       admin access control, against a running server
+├── check-attributes.ts       colours and sizes, and what deactivation does
+└── check-admin-ui.ts         the admin UI in a real browser, at nine widths
 
 docs/
 ├── database/README.md        database architecture, decisions and workflows
 ├── authentication/README.md  auth architecture, OTP lifecycle, security notes
 ├── storefront/README.md      component system and the product data contract
 ├── catalog/README.md         catalogue domain, services, filtering, seeding
-└── admin-catalog/README.md   admin architecture, authorisation, mutations
+├── admin-catalog/README.md   admin architecture, authorisation, mutations
+└── admin-attributes/README.md  colours, sizes, deactivation, browser verification
 
 src/
 ├── proxy.ts                  optimistic request guard (Next.js 16 convention)
@@ -230,7 +252,9 @@ src/
 │   │   ├── layout.tsx        sidebar shell, the role gate
 │   │   ├── page.tsx          /admin — catalogue dashboard
 │   │   ├── products/         list, create, edit
-│   │   └── categories/       list, create, edit
+│   │   ├── categories/       list, create, edit
+│   │   ├── colors/           the shared palette
+│   │   └── sizes/            the shared size run
 │   ├── api/health/route.ts   liveness and database probe
 │   ├── globals.css           design tokens and base styles
 │   ├── layout.tsx            root layout: fonts, metadata, html/body
@@ -508,6 +532,52 @@ figure that could be real, and the page says so.
 **Still to come:** colour and size screens, stock movements, an audit log, image
 uploads, and everything downstream of an order.
 
+## Phase 7 — admin attributes
+
+Two things: colours and sizes became manageable, and the browser verification
+Phase 6 could not do actually happened.
+
+Full detail is in
+[docs/admin-attributes/README.md](docs/admin-attributes/README.md). The short
+version:
+
+**Colours and sizes are no longer seed-only.** Six new routes, matching the
+collections screens: list with usage counts, create, edit, reorder with arrows,
+switch on and off. No schema change was needed — Phase 5 already had every
+column; what was missing was the interface.
+
+**Switching one off means "stop offering it", not "delete it".** It leaves the
+choices for new variants and the shop filter. Every variant already cut in it
+stays sellable with its stock, its photographs keep their colour association,
+and turning it back on restores everything. There is no delete at all, because
+every reference is `onDelete: Restrict` and deactivation does the job without
+an irreversible button on a list screen.
+
+**The database is authoritative about what is currently offered.** If one
+administrator retires a colour while another has a product editor open, the
+second one's submit is refused rather than quietly resurrecting it — checked at
+write time, not trusted from the form.
+
+**No hardcoded attribute lists anywhere.** The product form, the variant
+generator and the storefront filters all read the tables. A shop selling 28–36,
+or a single "Free" size, works with no code change.
+
+**A real browser pass, at last.** `playwright` is a devDependency and
+`pnpm check:ui` drives headless Chromium through the actual screens — typing in
+the forms, opening the dialogs, pressing Escape, generating variants, and
+measuring every admin and storefront page at 320, 360, 390, 414, 768, 1024,
+1280, 1440 and 1920.
+
+**It found four real defects**, all fixed: four sets of inline text links —
+"View store", the two dashboard tile links, and the product links in both
+dashboard panels — were 15–20px tall, below the 24px minimum for a reliable tap
+target. Every HTTP-level check in Phase 6 passed them; measuring a rendered box
+did not.
+
+**Still to come:** stock movements, an audit log, image uploads, a
+customer-facing size guide from the measurement fields, and everything
+downstream of an order.
+
 ## What is not built yet
 
 Deliberately absent, each arriving in the phase that needs it:
@@ -516,9 +586,9 @@ Deliberately absent, each arriving in the phase that needs it:
   transport refuses to run in production
 - A customer account area. Signing in works; there is no profile or order
   history to show yet
-- **Colour and size management.** Variants are built from the existing palette
-  and size run; adding a new colour is still a seed change
-  - **An audit log.** `updatedAt` records when something changed, never who
+- **An audit log.** `updatedAt` records when something changed, never who
+- **A customer-facing size guide.** `Size` carries bust, waist and hip
+  measurements and the admin edits them; nothing renders them yet
 - **Inventory workflows.** Stock can be corrected from the admin area; there
   are no adjustments with reasons, reservations, stock takes or returns
 - **Real product photography.** Development placeholders come from Unsplash,
@@ -533,7 +603,6 @@ Deliberately absent, each arriving in the phase that needs it:
 - Cart, wishlist, checkout, orders, payments
 - Coupons, reviews, shipping and email providers
 - Image upload and media storage
-- A size guide. `Size` carries measurements; nothing renders them
 - Dark theme
 
 The database models for all of the above are also absent on purpose. See
@@ -549,8 +618,9 @@ The database models for all of the above are also absent on purpose. See
 | 4     | Storefront UI and commerce component system — **done**       |
 | 5     | Product, category and variant catalogue behind that UI — **done** |
 | 6     | Admin console: catalogue management — **done**                |
-| 7     | Bag and wishlist persistence                                 |
-| 8     | Checkout, payments and orders                                |
-| 9     | Inventory workflows, coupons, reviews, image uploads         |
+| 7     | Admin attributes, and real browser verification — **done**    |
+| 8     | Bag and wishlist persistence                                 |
+| 9     | Checkout, payments and orders                                |
+| 10    | Inventory workflows, coupons, reviews, image uploads         |
 
 Each phase adds the database models its feature needs, through a migration.

@@ -237,7 +237,7 @@ export function CategoryForm({ category, nextPosition = 0 }: CategoryFormProps) 
       <div className="flex flex-wrap items-center justify-end gap-3">
         <Link
           href="/admin/categories"
-          className="font-sans text-sm text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+          className="inline-block py-1 font-sans text-sm text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
         >
           Cancel
         </Link>

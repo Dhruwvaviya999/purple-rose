@@ -23,6 +23,9 @@ export type CatalogMetrics = {
   categories: { total: number; active: number };
   variants: { total: number; active: number; outOfStock: number; lowStock: number };
   images: number;
+  /** The shared attribute tables, which Phase 7 made manageable. */
+  colors: { total: number; active: number };
+  sizes: { total: number; active: number };
 };
 
 export type LowStockVariant = {
@@ -46,7 +49,7 @@ export type RecentProduct = {
 /**
  * Every count in one round trip.
  *
- * Eleven aggregations, issued together rather than in sequence, none of which
+ * Fifteen aggregations, issued together rather than in sequence, none of which
  * reads a row into JavaScript to count it. The alternative — loading products
  * and counting them here — would read the whole catalogue to produce four
  * integers.
@@ -66,6 +69,10 @@ export async function getCatalogMetrics(): Promise<CatalogMetrics> {
     outOfStock,
     lowStock,
     images,
+    colors,
+    activeColors,
+    sizes,
+    activeSizes,
   ] = await Promise.all([
     prisma.product.count(),
     prisma.product.count({ where: { status: ProductStatus.ACTIVE } }),
@@ -89,6 +96,10 @@ export async function getCatalogMetrics(): Promise<CatalogMetrics> {
       },
     }),
     prisma.productImage.count(),
+    prisma.color.count(),
+    prisma.color.count({ where: { isActive: true } }),
+    prisma.size.count(),
+    prisma.size.count({ where: { isActive: true } }),
   ]);
 
   return {
@@ -96,6 +107,8 @@ export async function getCatalogMetrics(): Promise<CatalogMetrics> {
     categories: { total: categories, active: activeCategories },
     variants: { total: variants, active: activeVariants, outOfStock, lowStock },
     images,
+    colors: { total: colors, active: activeColors },
+    sizes: { total: sizes, active: activeSizes },
   };
 }
 

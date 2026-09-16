@@ -24,7 +24,9 @@ actions/
     ├── products.ts
     ├── categories.ts
     ├── variants.ts
-    └── images.ts
+    ├── images.ts
+    ├── colors.ts
+    └── sizes.ts
 ```
 
 One module per feature rather than one `admin.ts`: every export in a

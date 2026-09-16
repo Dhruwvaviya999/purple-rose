@@ -9,7 +9,9 @@ Phase 6 built this. Before it, the catalogue was edited by rewriting the seed.
 For the catalogue domain itself — the models, the money representation, how the
 storefront reads it — read [docs/catalog/README.md](../catalog/README.md). For
 the session and role machinery underneath, read
-[docs/authentication/README.md](../authentication/README.md).
+[docs/authentication/README.md](../authentication/README.md). For colours and
+sizes specifically — what deactivating one does, and the browser verification —
+read [docs/admin-attributes/README.md](../admin-attributes/README.md).
 
 ---
 
@@ -72,8 +74,9 @@ refused. The helper moved to `lib/admin/sku.ts`; see it for the note.
 | `/admin/categories/new` | Create |
 | `/admin/categories/[id]` | Edit |
 
-There is deliberately no `/admin/colors` or `/admin/sizes`. See
-[Known limitations](#known-limitations).
+Phase 7 added `/admin/colors` and `/admin/sizes`, with the same list, create
+and edit shape. See
+[docs/admin-attributes/README.md](../admin-attributes/README.md).
 
 Every one of them renders per request. The layout reads the session, so nothing
 under `/admin` is cacheable and that is not a decision to revisit.
@@ -161,7 +164,9 @@ actions/admin/
 ├── products.ts     create, update, publish/unpublish/archive
 ├── categories.ts   create, update, switch on/off, reorder
 ├── variants.ts     create, bulk create, update, withdraw/restore
-└── images.ts       add, edit, remove, reorder
+├── images.ts       add, edit, remove, reorder
+├── colors.ts       create, update, switch on/off, reorder   (Phase 7)
+└── sizes.ts        create, update, switch on/off, reorder   (Phase 7)
 ```
 
 Every exported function is a callable endpoint, which is why each follows the
@@ -648,13 +653,6 @@ rather than implying the action endpoints were called as a customer.
 ---
 
 ## Known limitations
-
-**Colours and sizes have no admin screens.** Variants are built from the
-existing palette and size run; adding a new colour means a seed change. This is
-a real gap: an administrator cannot create a product in a colour that does not
-exist yet. It was left out because the models are small, stable and shared by
-the whole catalogue, and because a screen for them is its own phase-sized
-decision about what happens to variants when one is retired.
 
 **Last writer must retry, not merge.** Stale writes are refused, not
 reconciled. Two administrators editing the same product see "someone else

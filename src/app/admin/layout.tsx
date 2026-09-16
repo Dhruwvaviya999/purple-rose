@@ -55,7 +55,10 @@ export default async function AdminLayout({ children }: { children: ReactNode })
             </span>
             <Link
               href="/"
-              className="font-sans text-sm font-medium text-ink-muted transition-colors hover:text-brand-strong"
+              // `inline-block` and vertical padding so the tap target clears
+              // 24px on a phone. Inline text defaults to its line box, which
+              // is 20px here and too small to hit reliably.
+              className="inline-block py-1 font-sans text-sm font-medium text-ink-muted transition-colors hover:text-brand-strong"
             >
               View store
             </Link>

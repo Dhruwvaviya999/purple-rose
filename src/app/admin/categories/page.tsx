@@ -70,7 +70,7 @@ export default async function AdminCategoriesPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/admin/categories/${category.id}`}
-                      className="font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+                      className="inline-block py-1 font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
                     >
                       {category.name}
                     </Link>

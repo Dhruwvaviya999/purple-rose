@@ -79,6 +79,12 @@ const ADMIN_PATHS = [
   "/admin/products/new",
   "/admin/categories",
   "/admin/categories/new",
+  // Phase 7. Listed here rather than checked once by hand, so a new admin
+  // section cannot quietly ship without its access control being asserted.
+  "/admin/colors",
+  "/admin/colors/new",
+  "/admin/sizes",
+  "/admin/sizes/new",
 ] as const;
 
 async function main(): Promise<void> {

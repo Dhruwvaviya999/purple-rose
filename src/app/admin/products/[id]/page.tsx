@@ -75,7 +75,7 @@ export default async function EditProductPage(
         breadcrumb={
           <Link
             href="/admin/products"
-            className="font-sans text-xs text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+            className="inline-block py-1.5 font-sans text-xs text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
           >
             ← Products
           </Link>
@@ -87,7 +87,7 @@ export default async function EditProductPage(
             {product.status === ProductStatus.ACTIVE ? (
               <Link
                 href={`/shop/${product.slug}`}
-                className="font-sans text-sm text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+                className="inline-block py-1 font-sans text-sm text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
               >
                 View in shop
               </Link>

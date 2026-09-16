@@ -27,7 +27,7 @@ export default async function NewCategoryPage() {
         breadcrumb={
           <Link
             href="/admin/categories"
-            className="font-sans text-xs text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+            className="inline-block py-1.5 font-sans text-xs text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
           >
             ← Collections
           </Link>

@@ -32,7 +32,7 @@ export default async function NewProductPage() {
         breadcrumb={
           <Link
             href="/admin/products"
-            className="font-sans text-xs text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+            className="inline-block py-1.5 font-sans text-xs text-ink-muted underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
           >
             ← Products
           </Link>

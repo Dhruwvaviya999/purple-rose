@@ -119,7 +119,7 @@ export default async function AdminProductsPage(
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <Link
                         href={`/admin/products/${product.id}`}
-                        className="font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+                        className="inline-block py-1 font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
                       >
                         {product.name}
                       </Link>
@@ -190,7 +190,7 @@ export default async function AdminProductsPage(
                         <div className="min-w-0">
                           <Link
                             href={`/admin/products/${product.id}`}
-                            className="font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+                            className="inline-block py-1 font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
                           >
                             {product.name}
                           </Link>

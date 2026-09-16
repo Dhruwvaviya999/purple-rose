@@ -57,6 +57,39 @@ async function existingCombinations(productId: string): Promise<Set<string>> {
 }
 
 /**
+ * Are this colour and size still offered?
+ *
+ * Checked at write time, not trusted from the form, because the form is a
+ * snapshot. One administrator can open a product editor while another
+ * retires a colour, and the first one's submit would otherwise quietly bring
+ * it back into the catalogue — creating a sellable variant in a colour the
+ * shop has stopped offering, which no screen would ever show as wrong.
+ *
+ * The database is authoritative about what is currently offered, so the
+ * question is asked of the database at the moment of the write.
+ *
+ * This applies only to **new** variants. An existing one keeps its colour and
+ * size whatever their state: deactivating an attribute must never make a
+ * product impossible to edit, and the variant it already has is history.
+ */
+async function offeredAttributes(
+  colorId: string,
+  sizeId: string,
+): Promise<{ colour: boolean; size: boolean }> {
+  const [colour, size] = await Promise.all([
+    prisma.color.findFirst({ where: { id: colorId, isActive: true }, select: { id: true } }),
+    prisma.size.findFirst({ where: { id: sizeId, isActive: true }, select: { id: true } }),
+  ]);
+
+  return { colour: colour !== null, size: size !== null };
+}
+
+const COLOUR_WITHDRAWN =
+  "That colour is no longer offered. Someone switched it off while this page was open — reload to see the current palette, or switch it back on under Colours.";
+const SIZE_WITHDRAWN =
+  "That size is no longer offered. Someone switched it off while this page was open — reload to see the current size run, or switch it back on under Sizes.";
+
+/**
  * Create one variant and the inventory row behind it.
  *
  * A transaction, because a variant without inventory reads as unavailable
@@ -81,6 +114,16 @@ export async function createVariant(
       "This product already has that colour in that size. Edit the existing variant, or reactivate it if it was withdrawn.",
       "sizeId",
     );
+  }
+
+  const offered = await offeredAttributes(input.colorId, input.sizeId);
+
+  if (!offered.colour) {
+    return fail("invalid-reference", COLOUR_WITHDRAWN, "colorId");
+  }
+
+  if (!offered.size) {
+    return fail("invalid-reference", SIZE_WITHDRAWN, "sizeId");
   }
 
   const position = await prisma.productVariant.count({
@@ -168,6 +211,25 @@ export async function createVariants(
       "variant-exists",
       "Some of those combinations already exist on this product. Remove them from the list and try again.",
     );
+  }
+
+  // Every distinct attribute in the batch has to still be offered. Asked once
+  // per attribute rather than once per row: sixty rows of three colours is
+  // three questions, not sixty.
+  const colourIds = [...new Set(input.variants.map((variant) => variant.colorId))];
+  const sizeIds = [...new Set(input.variants.map((variant) => variant.sizeId))];
+
+  const [offeredColours, offeredSizes] = await Promise.all([
+    prisma.color.count({ where: { id: { in: colourIds }, isActive: true } }),
+    prisma.size.count({ where: { id: { in: sizeIds }, isActive: true } }),
+  ]);
+
+  if (offeredColours !== colourIds.length) {
+    return fail("invalid-reference", COLOUR_WITHDRAWN, "colorId");
+  }
+
+  if (offeredSizes !== sizeIds.length) {
+    return fail("invalid-reference", SIZE_WITHDRAWN, "sizeId");
   }
 
   const startPosition = await prisma.productVariant.count({
