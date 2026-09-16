@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { Route } from "next";
 
+import { productQueryParams } from "@/features/storefront/product-query";
 import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock";
 import { CloseIcon, SearchIcon } from "@/components/shared/icons";
 import { IconButton } from "@/components/ui/icon-button";
@@ -17,16 +20,21 @@ import { Text } from "@/components/ui/typography";
  * something you do from wherever you are and expect to return from. Full width
  * on a phone, where the keyboard takes most of the screen anyway.
  *
- * There is no catalogue to search yet, so this builds the interaction and the
- * states and is explicit that nothing is being queried. It does not fabricate
- * results: a list of plausible-looking matches would be the one thing in this
- * phase that could actually mislead someone.
+ * Submitting navigates to `/shop?q=…`. The search itself runs on the server,
+ * against the database, and its results are the ordinary listing with the
+ * ordinary filters still available beside them. That is deliberate: a shopper
+ * who searches "linen" almost always wants to narrow by size or price next,
+ * and a separate results page would have to grow its own copy of all of it.
  *
- * The states are real and all reachable: idle with suggestions, typing, and
- * the not-connected outcome once a term is entered.
+ * Nothing is queried as you type. A request per keystroke would be a request
+ * per keystroke, and the listing it lands on is a real, shareable URL rather
+ * than a dropdown that vanishes.
  *
- * Suggestions arrive as props from the server so no catalogue data, mock or
- * otherwise, is bundled into the browser to render them.
+ * The states are real and all reachable: idle with suggestions, typing, and a
+ * prompt to submit once there is enough of a term to look for.
+ *
+ * Suggestions arrive as props from the server, so no catalogue data is
+ * bundled into the browser to render them.
  */
 
 /** The minimum a suggestion needs. Widened when categories become real. */
@@ -42,6 +50,7 @@ export function SearchOverlay({
 }) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
+  const router = useRouter();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -100,7 +109,27 @@ export function SearchOverlay({
       ? "idle"
       : trimmed.length < MIN_TERM_LENGTH
         ? "typing"
-        : "unavailable";
+        : "ready";
+
+  /**
+   * Hand the term to the listing.
+   *
+   * `encodeURIComponent` so a term with an ampersand or a hash arrives whole;
+   * the server then re-parses and length-caps it in `parseProductQuery`,
+   * because nothing built in a browser is trusted on arrival.
+   */
+  function submit() {
+    if (trimmed.length < MIN_TERM_LENGTH) {
+      return;
+    }
+
+    const href =
+      `/shop?${productQueryParams.search}=${encodeURIComponent(trimmed)}` as Route;
+
+    setOpen(false);
+    setTerm("");
+    router.push(href);
+  }
 
   return (
     <>
@@ -136,7 +165,10 @@ export function SearchOverlay({
                     <form
                       role="search"
                       className="flex flex-1 items-center gap-3 rounded-control border border-line-strong bg-canvas px-4 focus-within:border-ink"
-                      onSubmit={(event) => event.preventDefault()}
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        submit();
+                      }}
                     >
                       <SearchIcon
                         aria-hidden="true"
@@ -188,8 +220,8 @@ export function SearchOverlay({
                       <Text size="sm">Keep typing to search.</Text>
                     ) : null}
 
-                    {stage === "unavailable" ? (
-                      <SearchUnavailable term={trimmed} onNavigate={close} />
+                    {stage === "ready" ? (
+                      <SearchPrompt term={trimmed} onSubmit={submit} />
                     ) : null}
                   </div>
                 </Container>
@@ -237,33 +269,36 @@ function SearchSuggestions({
 }
 
 /**
- * The honest outcome. Search needs a catalogue to search, and there is not one
- * yet, so this says that instead of showing invented matches.
+ * Ready to search.
+ *
+ * No results are shown here. Counting matches would mean a query on every
+ * keystroke to render a number the listing is about to render properly, and
+ * the listing is one key away. The button and Enter do the same thing.
  */
-function SearchUnavailable({
+function SearchPrompt({
   term,
-  onNavigate,
+  onSubmit,
 }: {
   term: string;
-  onNavigate: () => void;
+  onSubmit: () => void;
 }) {
   return (
     <div className="rounded-card border border-dashed border-line-strong bg-surface px-5 py-8 text-center sm:px-8">
       <h2 className="font-sans text-base font-medium text-ink">
-        Search is not connected yet
+        Search the catalogue for{" "}
+        <span className="text-brand-strong">“{term}”</span>
       </h2>
       <Text size="sm" className="mx-auto mt-2 max-w-md">
-        Nothing is being looked up for{" "}
-        <span className="font-medium text-ink">“{term}”</span>. Search starts
-        working when the catalogue is published.
+        Names, collections and colours are all searched. Press Enter, or use the
+        button below.
       </Text>
-      <Link
-        href="/shop"
-        onClick={onNavigate}
-        className="mt-5 inline-flex font-sans text-sm text-brand underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+      <button
+        type="button"
+        onClick={onSubmit}
+        className="mt-5 inline-flex items-center rounded-control bg-ink px-5 py-2.5 font-sans text-sm text-canvas transition-colors hover:bg-ink-900"
       >
-        Browse everything instead
-      </Link>
+        Show matching pieces
+      </button>
     </div>
   );
 }

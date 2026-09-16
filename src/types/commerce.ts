@@ -5,9 +5,10 @@
  * component imports a Prisma type, so the database schema can change shape
  * without a single component changing with it.
  *
- * When the catalogue arrives, a service maps a Prisma `Product` into
- * `ProductCardData` or `ProductDetailData` and everything below stays as is.
- * That mapping is the only place the two vocabularies meet.
+ * `src/lib/catalog/product-mapper.ts` maps a Prisma `Product` into
+ * `ProductCardData` or `ProductDetailData`. That mapping is the only place the
+ * two vocabularies meet, which is what let the schema arrive in Phase 5
+ * without a single component changing with it.
  *
  * Money is always an integer in the currency minor unit. See
  * `src/lib/utils/format-price.ts`.
@@ -66,13 +67,52 @@ export type ProductCardData = {
   colours: readonly ProductColour[];
 };
 
+/**
+ * A colour, plus everything that is true only while that colour is selected.
+ *
+ * Added in Phase 5. The mock catalogue had one flat list of photographs and
+ * one flat list of sizes per product, which cannot express the two facts a
+ * real catalogue has: a garment is photographed separately in each colour, and
+ * it is cut in different sizes in each colour. Both come from variant rows, so
+ * the shape had to grow to carry them.
+ *
+ * `ProductDetailData` keeps its flat `images` and `sizes` as the union across
+ * every colour. Those are what a card shows and what the page falls back to
+ * before a colour is chosen, so nothing built in Phase 4 had to change.
+ */
+export type ProductColourOption = ProductColour & {
+  /** Photographs of this colour, then any shot shared by every colour. */
+  images: readonly StorefrontImage[];
+  /**
+   * Every size the product is made in, marked available only where a variant
+   * in this colour is orderable. The list is the full size run rather than
+   * only the stocked sizes, so a shopper sees that L exists and is gone.
+   */
+  sizes: readonly ProductSize[];
+};
+
 /** The card data plus what a product page adds. */
 export type ProductDetailData = ProductCardData & {
+  /** Every photograph, across every colour. The gallery's starting state. */
   images: readonly StorefrontImage[];
   description: string;
   /** Short factual lines: fabric, fit, care, origin. */
   details: readonly string[];
+  /** The size run, available where any colour has it in stock. */
   sizes: readonly ProductSize[];
+  /** Per-colour photographs and size availability. */
+  colourOptions: readonly ProductColourOption[];
+  /** Product-level identity, shown in the details and in product metadata. */
+  articleNumber: string;
+  /**
+   * Copy written for a search result rather than for the page.
+   *
+   * Null when nobody has written any, in which case the page falls back to the
+   * product's own description. Nothing here is generated from the name: an
+   * invented meta description is worse than a truncated real one.
+   */
+  seoTitle: string | null;
+  seoDescription: string | null;
 };
 
 export type StorefrontCategory = {

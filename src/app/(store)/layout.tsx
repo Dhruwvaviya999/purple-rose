@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { listMockCategories } from "@/features/storefront/mock/query";
+import { getCategoryNavigation } from "@/lib/services/category-service";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 
@@ -9,13 +9,12 @@ import { SiteHeader } from "@/components/layout/site-header";
  * footer chrome. The admin area and authentication screens deliberately sit
  * outside this group so they can carry their own chrome.
  */
-export default function StoreLayout({ children }: { children: ReactNode }) {
-  // Read here rather than inside the header, so no component imports
-  // catalogue data. Phase 5 swaps this one call for a service call.
-  const categories = listMockCategories().map((category) => ({
-    slug: category.slug,
-    name: category.name,
-  }));
+export default async function StoreLayout({ children }: { children: ReactNode }) {
+  // Read here rather than inside the header, so no component queries the
+  // database. The header, the mobile drawer, the search panel and the footer
+  // all take the same list as props, which is why it is fetched once for the
+  // whole storefront instead of four times.
+  const categories = await getCategoryNavigation();
 
   return (
     <>
@@ -32,7 +31,7 @@ export default function StoreLayout({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      <SiteFooter />
+      <SiteFooter categories={categories} />
     </>
   );
 }

@@ -42,10 +42,26 @@ export function ActiveFilters({ query, groups, className }: ActiveFiltersProps) 
 
   const chips: Chip[] = [];
 
+  if (query.search) {
+    chips.push({
+      key: "search",
+      group: "search",
+      label: `“${query.search}”`,
+      remove: () => setValue(productQueryParams.search, null),
+    });
+  }
+
+  // Every multi-select group, in the order the panel lists them. Adding a
+  // group to the panel adds its chips here by adding one line, rather than by
+  // remembering to write a second block.
   for (const [param, values, group] of [
     [productQueryParams.category, query.categories, "category"],
     [productQueryParams.size, query.sizes, "size"],
     [productQueryParams.colour, query.colours, "colour"],
+    [productQueryParams.fabric, query.fabrics, "fabric"],
+    [productQueryParams.pattern, query.patterns, "pattern"],
+    [productQueryParams.fit, query.fits, "fit"],
+    [productQueryParams.occasion, query.occasions, "occasion"],
   ] as const) {
     for (const value of values) {
       chips.push({
@@ -57,22 +73,31 @@ export function ActiveFilters({ query, groups, className }: ActiveFiltersProps) 
     }
   }
 
-  if (query.onSale) {
-    chips.push({
-      key: "sale",
-      group: "availability",
-      label: "On sale",
-      remove: () => setValue(productQueryParams.sale, null),
-    });
-  }
-
-  if (query.inStockOnly) {
-    chips.push({
-      key: "in-stock",
-      group: "availability",
-      label: "In stock",
-      remove: () => setValue(productQueryParams.inStock, null),
-    });
+  for (const [param, active, group, label] of [
+    [productQueryParams.sale, query.onSale, "availability", "On sale"],
+    [productQueryParams.inStock, query.inStockOnly, "availability", "In stock"],
+    [
+      productQueryParams.newArrival,
+      query.newArrivalsOnly,
+      "collection",
+      "New arrivals",
+    ],
+    [productQueryParams.featured, query.featuredOnly, "collection", "Featured"],
+    [
+      productQueryParams.bestSeller,
+      query.bestSellersOnly,
+      "collection",
+      "Purple Rose picks",
+    ],
+  ] as const) {
+    if (active) {
+      chips.push({
+        key: param,
+        group,
+        label,
+        remove: () => setValue(param, null),
+      });
+    }
   }
 
   if (query.minPrice !== undefined || query.maxPrice !== undefined) {

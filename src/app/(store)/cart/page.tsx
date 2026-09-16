@@ -24,7 +24,14 @@ export const metadata: Metadata = {
  *
  * When carts exist, the line items and the summary render here and the empty
  * state stays for an empty bag.
+ *
+ * Rendered per request. A bag belongs to one person and is different for
+ * every one of them, so there has never been anything here to prerender; the
+ * declaration is made now because the storefront shell around it reads the
+ * live category list.
  */
+export const dynamic = "force-dynamic";
+
 export default function CartPage() {
   return (
     <Section>

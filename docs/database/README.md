@@ -3,9 +3,13 @@
 How the Purple Rose database is put together, and why. This covers decisions
 specific to this store. For general Prisma usage, read the Prisma docs.
 
-Phase 2 established this foundation. It holds one enum and one table. That is
-deliberate, and the reasoning is in
-[What is deliberately not modelled yet](#what-is-deliberately-not-modelled-yet).
+Phase 2 established this foundation, Phase 3 added authentication and Phase 5
+added the catalogue. What is still absent is deliberate, and the reasoning is
+in [What is deliberately not modelled yet](#what-is-deliberately-not-modelled-yet).
+
+The catalogue models have their own document, because the reasoning behind them
+is about selling clothes rather than about running a database:
+[docs/catalog/README.md](../catalog/README.md).
 
 ---
 
@@ -273,6 +277,23 @@ A native enum keeps the database authoritative. Extending it later is an
 additive migration. More granular admin permissions, if they are ever needed,
 should be a separate permissions concept rather than a longer role list.
 
+### Catalogue models
+
+`Category`, `Product`, `ProductCategory`, `Size`, `Color`, `ProductVariant`,
+`Inventory` and `ProductImage`, plus `ProductStatus`, `Fabric`, `Pattern`,
+`Fit` and `Occasion`. Added in Phase 5 by
+`20260916120000_add_catalog_domain`.
+
+Each model carries its reasoning in `prisma/schema.prisma`, and the design as a
+whole — many-to-many categories, why variants are rows, why stock has its own
+table, why money is an integer — is in
+[docs/catalog/README.md](../catalog/README.md).
+
+Two conventions from this document that the catalogue follows without
+exception: **money is an integer in the minor unit**, never a float and never a
+`Decimal`; and **nothing public is deleted**, it is given a status or an
+`isActive` flag, so a row a future order references cannot disappear.
+
 ### `model User`
 
 | Field         | Type       | Constraints                              | Why it exists |
@@ -309,27 +330,36 @@ costs nothing and unblocks the next phase.
 
 ## What is deliberately not modelled yet
 
-Not modelled: `Product`, `ProductVariant`, `ProductImage`, `Category`,
-`Inventory`, `Cart`, `CartItem`, `Wishlist`, `Order`, `OrderItem`, `Address`,
-`Payment`, `Shipment`, `Coupon`, `Review`, and the one-time-code model.
+Not modelled: `Cart`, `CartItem`, `Wishlist`, `Order`, `OrderItem`, `Address`,
+`Payment`, `Shipment`, `Coupon`, `Review`, and any inventory ledger.
 
 This is a decision, not an omission. A twenty-table ecommerce schema written
-before any of those features exist would be guessing at the questions that
-actually decide the design:
+before those features exist would be guessing at the questions that actually
+decide the design:
 
-- Does a size run as a variant of a product, or does the product carry a size
-  set? That depends on how stock is counted and how the catalogue is edited.
 - Is a cart a database row or a cookie until checkout? That depends on whether
   guests can shop, which is a product decision nobody has made.
 - Does an order copy the product name and price at purchase time? It has to,
   for receipts and refunds, but exactly which fields get copied depends on the
   invoice we end up sending.
+- Does a stock adjustment need a reason code and an operator? That depends on
+  whether anyone will ever audit one.
 
 Every wrong guess becomes a migration against live data. Each phase adds the
 models its feature needs, through a migration, with the feature's requirements
-actually known. The categories the brand will sell, such as cotton dresses and
-co-ord sets, are database rows in a future `Category` table, never values
-hardcoded in the application.
+actually known.
+
+The one question in that list which Phase 5 *did* have to answer is worth
+recording, because the catalogue could not be built without it: **a size run is
+a variant of a product, not a size set on the product.** Stock is counted per
+colour-and-size, so that combination has to be the row a quantity hangs off and
+the row an order line will one day point at. See
+[Variants](../catalog/README.md#variants).
+
+Note also what these absences make safe later: products are archived rather
+than deleted, and variants deactivated rather than deleted, precisely so that
+`OrderItem` can reference them when it arrives without a past order losing the
+thing it was for.
 
 ---
 

@@ -24,7 +24,12 @@ export const metadata: Metadata = {
  * When persistence arrives, the empty state stays for shoppers who have saved
  * nothing and a `ProductGrid` renders above it for everyone else. This file is
  * where that branch goes.
+ *
+ * Rendered per request, for the same reason as the bag: a saved list is one
+ * person's, so it is never a page that can be built once and shared.
  */
+export const dynamic = "force-dynamic";
+
 export default function WishlistPage() {
   return (
     <Section>

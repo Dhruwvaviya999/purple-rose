@@ -129,3 +129,453 @@ model Session {
   /// Serves expiry sweeps.
   @@index([expiresAt])
 }
+
+// ---------------------------------------------------------------------------
+// Catalogue
+//
+// Added in Phase 5. See docs/catalog/README.md for the reasoning behind the
+// shapes below; this file carries the short version next to each model.
+//
+// Money is an integer in the currency minor unit (paise) everywhere. There is
+// no Decimal, no Float and no string amount in this schema. See Product.price.
+// ---------------------------------------------------------------------------
+
+/// Where a product is in its life.
+///
+/// Only ACTIVE products are ever returned by the public storefront, and that
+/// rule lives in the service layer rather than in a component. ARCHIVED is
+/// what "delete" means for a product that has been sold: the row stays, so a
+/// future order line can still name what was bought.
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+/// What a garment is made of.
+///
+/// An enum rather than a lookup table because this is a small, editorial
+/// vocabulary that the shop owner does not add to casually, and because the
+/// database then rejects a typo instead of quietly creating a second "Cotton"
+/// that splits a filter in two. Adding a value is a migration, which is the
+/// correct amount of friction for a facet that appears in the filter panel.
+enum Fabric {
+  COTTON
+  COTTON_POPLIN
+  LINEN
+  LINEN_BLEND
+  RAYON
+  GEORGETTE
+  SATIN
+  CHIFFON
+  KNIT
+  MODAL
+}
+
+/// The surface of the fabric. Same reasoning as Fabric.
+enum Pattern {
+  SOLID
+  FLORAL
+  STRIPED
+  CHECKED
+  PRINTED
+  EMBROIDERED
+  BLOCK_PRINT
+}
+
+/// How the garment sits. Same reasoning as Fabric.
+enum Fit {
+  RELAXED
+  REGULAR
+  FITTED
+  OVERSIZED
+  A_LINE
+  STRAIGHT
+}
+
+/// What it is for. Same reasoning as Fabric.
+enum Occasion {
+  EVERYDAY
+  WORK
+  BRUNCH
+  EVENING
+  FESTIVE
+  HOLIDAY
+}
+
+/// A collection a product can be browsed under.
+///
+/// Categories are rows, never a list in application code, so the navigation,
+/// the home tiles and the filter panel all follow the database.
+///
+/// There is deliberately no parent/child column. Purple Rose sells five flat
+/// collections; a tree would add recursive queries, breadcrumb assembly and a
+/// cycle check to serve a hierarchy nobody has asked for. Adding a parentId
+/// later is an additive migration.
+model Category {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  name String @db.VarChar(120)
+
+  /// URL key. Stable: renaming a category does not rewrite this, because a
+  /// changed slug breaks every link anyone has already shared.
+  slug String @unique @db.VarChar(140)
+
+  /// One line, shown under the tile and as the listing intro. Not the SEO
+  /// description, which is written for a search result rather than a shopper.
+  description String? @db.VarChar(280)
+
+  /// Tile photography. Stored with its intrinsic size so the layout can
+  /// reserve the box before the image loads, and so nothing has to parse a
+  /// URL to find out how big the picture is.
+  imageUrl    String? @db.VarChar(2048)
+  imageAlt    String? @db.VarChar(280)
+  imageWidth  Int?
+  imageHeight Int?
+
+  /// Manual ordering. Merchandising decides what comes first, not the alphabet.
+  position Int @default(0)
+
+  /// Hidden everywhere public when false. Categories are disabled rather than
+  /// deleted, so the products pointing at them keep a valid reference.
+  isActive Boolean @default(true)
+
+  seoTitle       String? @db.VarChar(160)
+  seoDescription String? @db.VarChar(320)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  products   ProductCategory[]
+  /// Products that name this as the one category they are displayed under.
+  primaryFor Product[]         @relation("PrimaryCategory")
+
+  /// Serves "the active categories, in merchandising order", which is every
+  /// read the navigation, the home tiles and the filter panel make.
+  @@index([isActive, position])
+}
+
+/// A garment.
+///
+/// A product is the thing a shopper reads about and the thing that carries a
+/// price. What they actually buy is a ProductVariant.
+model Product {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// Product-level identity, printed on a swing tag: PR-DR-0001. Unique, and
+  /// distinct from a variant SKU, which identifies one colour in one size.
+  articleNumber String @unique @db.VarChar(32)
+
+  name String @db.VarChar(160)
+
+  /// URL key, and the only part of /shop/[slug] that varies.
+  ///
+  /// Set once, at creation, from the name at that moment. It is deliberately
+  /// not re-derived when the name changes: a live product that quietly
+  /// changes URL breaks every inbound link, every share and every crawled
+  /// result pointing at it. Changing a slug is an explicit, separate act.
+  slug String @unique @db.VarChar(180)
+
+  /// One or two sentences for cards, search results and meta descriptions.
+  shortDescription String @db.VarChar(280)
+
+  /// The full copy on the product page.
+  description String @db.Text
+
+  status      ProductStatus @default(DRAFT)
+  /// When the product went live. Nullable because a draft has no such date.
+  /// This, not createdAt, is what "newest" sorts by and what the sitemap
+  /// reports, so a re-import does not reshuffle the storefront.
+  publishedAt DateTime?     @db.Timestamptz(3)
+
+  /// Selling price in paise. 129900 is the number for a garment priced 1,299.
+  ///
+  /// An integer in the currency minor unit, never a float and never a
+  /// decimal string. Binary floating point cannot represent 0.1, so a store
+  /// that adds up line items in floats eventually charges the wrong amount.
+  /// Integers in paise are exact, compare and sort correctly in SQL, and
+  /// convert to a displayed amount once, at the presentation boundary.
+  price Int
+
+  /// What it used to cost, in paise. Null when the product is not reduced.
+  ///
+  /// This pair is the whole of sale logic: a product is on sale when
+  /// compareAtPrice is present and greater than price. There is no separate
+  /// percentage column, because two sources for one fact drift.
+  compareAtPrice Int?
+
+  fabric           Fabric
+  pattern          Pattern
+  fit              Fit
+  occasion         Occasion
+  careInstructions String   @db.VarChar(280)
+
+  /// Merchandising flags, set by whoever runs the shop.
+  ///
+  /// bestSeller is an editorial choice, not a sales figure. No order system
+  /// exists, so nothing here is derived from what has actually sold, and
+  /// nothing in the application presents it as a ranking.
+  featured   Boolean @default(false)
+  newArrival Boolean @default(false)
+  bestSeller Boolean @default(false)
+  seasonal   Boolean @default(false)
+
+  seoTitle       String? @db.VarChar(160)
+  seoDescription String? @db.VarChar(320)
+
+  /// The one category shown on the card and in the breadcrumb.
+  ///
+  /// A product can belong to several collections (see ProductCategory), but a
+  /// card has room for one line and a breadcrumb has one path, so exactly one
+  /// membership is nominated as canonical. Restricted rather than cascaded:
+  /// deleting a category that products are displayed under should fail
+  /// loudly, not silently orphan a catalogue.
+  primaryCategoryId String   @db.Uuid
+  primaryCategory   Category @relation("PrimaryCategory", fields: [primaryCategoryId], references: [id], onDelete: Restrict)
+
+  categories ProductCategory[]
+  variants   ProductVariant[]
+  images     ProductImage[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  /// Serves the newest ordering, the sitemap and the home page rails, all of
+  /// which read live products in publication order.
+  @@index([status, publishedAt])
+  /// Serves the price range filter and both price orderings.
+  @@index([status, price])
+  /// Serves the foreign key check when a category is deleted or reassigned.
+  @@index([primaryCategoryId])
+}
+
+/// Which collections a product appears in.
+///
+/// An explicit join model rather than an implicit many-to-many, because the
+/// row carries data of its own: position is where the product sits inside
+/// that collection, which is a merchandising decision per collection rather
+/// than a property of the product.
+///
+/// Many-to-many is the right shape here and not over-modelling: "Fresh Prints"
+/// is a print story that cuts across dresses, co-ords and tops, so the same
+/// printed cotton dress genuinely belongs in two collections at once.
+model ProductCategory {
+  productId  String @db.Uuid
+  categoryId String @db.Uuid
+
+  /// Order within this collection. Lower comes first.
+  position Int @default(0)
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  /// One membership per pair, enforced by the database rather than by hoping
+  /// the importer checks first.
+  @@id([productId, categoryId])
+  /// Serves "everything in this collection, in order", which is the category
+  /// filter and the category facet count.
+  @@index([categoryId, position])
+}
+
+/// A size a garment can be made in.
+///
+/// Rows, not a constant in the interface, so a size can be retired or a new
+/// one added without a deployment. The size selector renders whatever it is
+/// given and knows nothing about clothing.
+model Size {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// Spoken form: "Medium".
+  name String @db.VarChar(40)
+
+  /// Canonical short form, uppercase: "M". Unique, and the value the URL
+  /// carries in lower case, so ?size=m resolves to exactly one row.
+  code String @unique @db.VarChar(16)
+
+  /// Smallest first. Facets are ordered by this, never by discovery order,
+  /// which is what stops XS appearing after XXL.
+  position Int @default(0)
+
+  isActive Boolean @default(true)
+
+  /// Body measurements in whole centimetres, for a future size guide. Three
+  /// nullable columns rather than a size-guide system, which is not needed
+  /// and would not be used yet.
+  bustCm  Int?
+  waistCm Int?
+  hipCm   Int?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  variants ProductVariant[]
+
+  @@index([isActive, position])
+}
+
+/// A colour a garment can be made in.
+///
+/// Global and reusable: "Ivory" is one row that many products point at, so the
+/// swatch, the name and the spelling are the same everywhere, and the colour
+/// filter has one entry for it rather than one per product.
+model Color {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  name String @db.VarChar(60)
+
+  /// URL key: "dusty-plum".
+  slug String @unique @db.VarChar(60)
+
+  /// CSS colour for the swatch, in #rrggbb form. This is product data
+  /// describing a garment, not an interface token, which is why a raw colour
+  /// value is allowed to live in a row and be rendered as an inline style.
+  hex String @db.VarChar(7)
+
+  position Int     @default(0)
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  variants ProductVariant[]
+  images   ProductImage[]
+
+  @@index([isActive, position])
+}
+
+/// One sellable combination: this product, in this colour, in this size.
+///
+/// This is the row an order line will eventually point at, and the row stock
+/// is counted against. A product is not a garment with a sizes text column;
+/// "Pink, M" either exists and can be bought or it does not.
+///
+/// There is deliberately no price column here. Pricing is product-level, so
+/// the price on the card, the price the filter compares and the price the
+/// product page shows are the same number by construction, with no aggregate
+/// to keep in step. Variant-level overrides are an additive migration plus a
+/// minimum-price aggregate on Product, and are worth it only when a real
+/// product needs them.
+model ProductVariant {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// Variant-level identity: PR-DR-0001-IVO-M. Unique across the catalogue,
+  /// because this is what a pick list, a barcode and an order line name.
+  sku String @unique @db.VarChar(48)
+
+  productId String @db.Uuid
+  colorId   String @db.Uuid
+  sizeId    String @db.Uuid
+
+  /// Withdrawn combinations are deactivated, not deleted, so a future order
+  /// line still resolves to the thing that was bought.
+  isActive Boolean @default(true)
+
+  position Int @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// Restricted: a colour or size that something is made in cannot be
+  /// deleted out from under it. Retire it with isActive instead.
+  color   Color   @relation(fields: [colorId], references: [id], onDelete: Restrict)
+  size    Size    @relation(fields: [sizeId], references: [id], onDelete: Restrict)
+
+  inventory Inventory?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  /// The important one. Without it nothing stops a second "Pink, M" being
+  /// created, and then two rows claim the same shelf and the same stock.
+  /// All three columns are NOT NULL on purpose: PostgreSQL treats NULLs as
+  /// distinct in a unique index, so a nullable colour or size would let
+  /// duplicates back in. A one-size garment gets a "Free" size row.
+  @@unique([productId, colorId, sizeId])
+  /// Serves loading a product's variants, which every product page does.
+  @@index([productId])
+  /// Serve the colour and size facets and filters, which reach variants by
+  /// colour or size and then count distinct products.
+  @@index([colorId])
+  @@index([sizeId])
+}
+
+/// How many of one variant there are.
+///
+/// A separate table rather than a column on the variant, for three reasons.
+/// Stock is the one part of a catalogue that changes constantly, and keeping
+/// it out of the variant row means a stock movement does not touch the row
+/// that descriptions, SKUs and merchandising read from. It gives adjustments,
+/// reservations and returns somewhere to point when they arrive, without
+/// widening ProductVariant again. And it keeps the write that matters,
+/// decrementing stock under a lock, on the narrowest possible row.
+///
+/// Only what availability needs is modelled here. There is no ledger, no
+/// reservation and no warehouse, because none of those have a caller yet.
+model Inventory {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  variantId String         @unique @db.Uuid
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  /// Units on hand. A variant is orderable when this is above zero.
+  /// The application never writes a negative value; a CHECK constraint is the
+  /// right home for that rule and is added with the first write path that
+  /// decrements stock.
+  quantity Int @default(0)
+
+  /// Where "only a few left" begins, per variant, because a staple and a
+  /// one-off run do not share a threshold.
+  lowStockThreshold Int @default(3)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  /// Availability is the only predicate this table is ever filtered by.
+  @@index([quantity])
+}
+
+/// A photograph of a product.
+///
+/// colorId is what makes a colour swatch change the gallery. An image
+/// belonging to a colour is shown when that colour is selected; an image with
+/// no colour is shared by every colour, which covers flat lays, fabric
+/// close-ups and detail shots. Nothing flattens the two into one list, so
+/// choosing Blue never shows the pink dress.
+model ProductImage {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  productId String  @db.Uuid
+  /// Null means "shown for every colour".
+  colorId   String? @db.Uuid
+
+  /// Absolute URL. Nothing in this column is specific to a host: the same
+  /// field holds a development placeholder today and a Cloudinary, Vercel
+  /// Blob or S3 URL later, with no migration.
+  url String @db.VarChar(2048)
+
+  /// Describes the garment, for anyone who cannot see the photograph.
+  alt String @db.VarChar(280)
+
+  /// Intrinsic pixel size, so the layout can reserve the box before the image
+  /// arrives and nothing shifts as the page loads.
+  width  Int
+  height Int
+
+  position Int @default(0)
+
+  /// The card image, and the first shot in the gallery. One per product is
+  /// the intent; the service reads the first primary in position order, so a
+  /// bad import degrades to a sensible picture rather than to an error.
+  isPrimary Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  color   Color?  @relation(fields: [colorId], references: [id], onDelete: Restrict)
+
+  /// Serves "the gallery for this product in this colour, in order", which is
+  /// the only way images are ever read.
+  @@index([productId, colorId, position])
+  /// Serves the foreign key check when a colour is retired.
+  @@index([colorId])
+}

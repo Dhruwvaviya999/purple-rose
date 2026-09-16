@@ -9,8 +9,8 @@ import { cn } from "@/lib/utils/cn";
  *
  * Structural links come from configuration; the category links are passed in
  * by whoever renders the header, so this component does not reach for data.
- * Today those categories come from the mock layer, and in Phase 5 from the
- * database, with no change here.
+ * Those categories are database rows, read once in the store layout, so
+ * renaming or retiring a collection changes this row without a deployment.
  *
  * A server component. There is no dropdown: with four categories a flat row
  * reads faster than a menu you have to open, and it needs no focus

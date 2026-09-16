@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { siteConfig } from "@/config/site";
 import {
-  findMockProductBySlug,
-  listMockProductSlugs,
-  listMockRelatedProducts,
-} from "@/features/storefront/mock/query";
+  getProductBySlug,
+  listRelatedProducts,
+} from "@/lib/services/product-service";
 import { Breadcrumbs } from "@/components/commerce/breadcrumbs";
 import { Price } from "@/components/commerce/price";
 import { ProductBadge, pickPrimaryBadge } from "@/components/commerce/product-badge";
-import { ProductGallery } from "@/components/commerce/product-gallery";
+import {
+  ProductColourGallery,
+  ProductVariantProvider,
+} from "@/components/commerce/product-variant-selection";
 import { ProductPurchasePanel } from "@/components/commerce/product-purchase-panel";
 import { ProductRail } from "@/components/commerce/product-grid";
 import { ReturnIcon, StarIcon, TruckIcon } from "@/components/shared/icons";
@@ -22,51 +25,97 @@ import { Heading, Text } from "@/components/ui/typography";
  * Product page.
  *
  * A Server Component that composes presentation components and passes typed
- * data down. The two interactive parts, the gallery and the purchase panel,
- * are their own client components, so the description, the details, the
- * delivery notes and the related rail are all server-rendered.
+ * data down. The interactive parts, the gallery and the purchase panel, are
+ * client components sharing one selection, so the description, the details,
+ * the delivery notes and the related rail are all server-rendered and are
+ * handed through the provider as children.
  *
- * Data comes from the mock layer, which is the only line Phase 5 changes here:
- * `findMockProductBySlug` becomes a service call returning the same
- * `ProductDetailData`, and nothing below it moves.
+ * ## Rendering and caching
+ *
+ * Rendered on demand and then cached for an hour, rather than prerendered at
+ * build. `generateStaticParams` deliberately returns nothing: building every
+ * product page up front would tie each deployment to the size of the
+ * catalogue and mean a price change waited for a rebuild. With an empty list
+ * and a `revalidate`, the first request for a piece renders it, everyone after
+ * that gets the cached page, and an edit is live within the hour. This is the
+ * documented way to get incremental regeneration without a build-time
+ * dependency on the database.
  */
+export const revalidate = 3600;
 
-/** Only the slugs that exist are routable; anything else is a 404. */
+/**
+ * No slugs are prerendered; every one is rendered on first request instead.
+ * `dynamicParams` defaults to true, which is what allows that.
+ */
 export function generateStaticParams() {
-  return listMockProductSlugs().map((slug) => ({ slug }));
+  return [];
 }
 
 export async function generateMetadata(
   props: PageProps<"/shop/[slug]">,
 ): Promise<Metadata> {
   const { slug } = await props.params;
-  const product = findMockProductBySlug(slug);
+  const product = await getProductBySlug(slug);
 
   if (!product) {
-    return { title: "Piece not found" };
+    return { title: "Piece not found", robots: { index: false, follow: false } };
   }
 
+  // Copy written for a search result where there is any, and the product's own
+  // description where there is not. Nothing here is invented from the name.
+  const description = product.seoDescription ?? product.description.slice(0, 155);
+  const canonical = `/shop/${product.slug}`;
+
   return {
-    title: product.name,
-    description: product.description.slice(0, 155),
+    title: product.seoTitle ?? product.name,
+    description,
+    alternates: { canonical },
     openGraph: {
+      type: "website",
+      url: canonical,
       title: product.name,
-      description: product.description.slice(0, 155),
-      images: [{ url: product.image.src, alt: product.image.alt }],
+      description,
+      siteName: siteConfig.name,
+      images: [
+        {
+          url: product.image.src,
+          alt: product.image.alt,
+          width: product.image.width,
+          height: product.image.height,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: product.name,
+      description,
+      images: [product.image.src],
+    },
+    other: {
+      // Real values read off the row, so a shopping crawler is told the same
+      // price and availability the page shows. Amounts are converted from
+      // paise to the major unit once, here, as an exact integer division.
+      "product:price:amount": (product.price / 100).toFixed(2),
+      "product:price:currency": siteConfig.currency.code,
+      "product:availability": product.inStock ? "in stock" : "out of stock",
+      "product:retailer_item_id": product.articleNumber,
     },
   };
 }
 
 export default async function ProductPage(props: PageProps<"/shop/[slug]">) {
   const { slug } = await props.params;
-  const product = findMockProductBySlug(slug);
+  const product = await getProductBySlug(slug);
 
+  // Missing, still a draft or archived all end here. One response for all
+  // three, so the existence of an unpublished piece is not revealed by a
+  // different reply.
   if (!product) {
     notFound();
   }
 
   const badge = pickPrimaryBadge(product.badges, product.inStock);
-  const related = listMockRelatedProducts(slug);
+  const related = await listRelatedProducts(slug);
 
   return (
     <>
@@ -84,62 +133,68 @@ export default async function ProductPage(props: PageProps<"/shop/[slug]">) {
             ]}
           />
 
-          <div className="mt-7 grid gap-10 lg:grid-cols-2 lg:gap-14">
-            <ProductGallery images={product.images} productName={product.name} />
+          {/* The provider is a client component; everything inside it that is
+              not a control stays server-rendered and is passed through as
+              children. It exists so one colour choice moves both the gallery
+              and the size row. */}
+          <ProductVariantProvider product={product}>
+            <div className="mt-7 grid gap-10 lg:grid-cols-2 lg:gap-14">
+              <ProductColourGallery productName={product.name} />
 
-            <div className="lg:pt-2">
-              {badge ? <ProductBadge kind={badge} className="mb-4" /> : null}
+              <div className="lg:pt-2">
+                {badge ? <ProductBadge kind={badge} className="mb-4" /> : null}
 
-              <Heading as="h1" level="lg">
-                {product.name}
-              </Heading>
+                <Heading as="h1" level="lg">
+                  {product.name}
+                </Heading>
 
-              <p className="mt-2 font-sans text-sm text-ink-subtle">
-                {product.category.name}
-              </p>
+                <p className="mt-2 font-sans text-sm text-ink-subtle">
+                  {product.category.name}
+                </p>
 
-              <Price
-                price={product.price}
-                compareAtPrice={product.compareAtPrice}
-                size="lg"
-                className="mt-5"
-              />
+                <Price
+                  price={product.price}
+                  compareAtPrice={product.compareAtPrice}
+                  size="lg"
+                  className="mt-5"
+                />
 
-              <p className="mt-2 font-sans text-xs text-ink-subtle">
-                Inclusive of all taxes
-              </p>
+                <p className="mt-2 font-sans text-xs text-ink-subtle">
+                  Inclusive of all taxes
+                </p>
 
-              <Text className="mt-7">{product.description}</Text>
+                <Text className="mt-7">{product.description}</Text>
 
-              <div className="mt-9">
-                <ProductPurchasePanel product={product} />
-              </div>
+                <div className="mt-9">
+                  <ProductPurchasePanel product={product} />
+                </div>
 
-              <div className="mt-10 space-y-8 border-t border-line pt-8">
-                <section aria-labelledby="product-details">
-                  <h2
-                    id="product-details"
-                    className="font-sans text-xs font-medium uppercase tracking-eyebrow text-ink-subtle"
-                  >
-                    Details
-                  </h2>
-                  <ul className="mt-4 space-y-2">
-                    {product.details.map((detail) => (
-                      <li
-                        key={detail}
-                        className="font-sans text-sm leading-relaxed text-ink-muted"
-                      >
-                        {detail}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
+                <div className="mt-10 space-y-8 border-t border-line pt-8">
+                  <section aria-labelledby="product-details">
+                    <h2
+                      id="product-details"
+                      className="font-sans text-xs font-medium uppercase tracking-eyebrow text-ink-subtle"
+                    >
+                      Details
+                    </h2>
+                    <ul className="mt-4 space-y-2">
+                      {product.details.map((detail) => (
+                        <li
+                          key={detail}
+                          className="font-sans text-sm leading-relaxed text-ink-muted"
+                        >
+                          {detail}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
 
-                <DeliveryNotes />
-                <ReviewsPlaceholder />
+                  <DeliveryNotes />
+                  <ReviewsPlaceholder />
+                </div>
               </div>
             </div>
-          </div>
+          </ProductVariantProvider>
         </Container>
       </Section>
 

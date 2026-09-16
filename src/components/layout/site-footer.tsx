@@ -1,8 +1,10 @@
 import Link from "next/link";
+import type { Route } from "next";
 
 import { footerNav } from "@/config/navigation";
 import { siteConfig } from "@/config/site";
-import { isNavLink } from "@/types/navigation";
+import type { StorefrontCategory } from "@/types/commerce";
+import { isNavLink, type NavGroup } from "@/types/navigation";
 import { Container } from "@/components/ui/container";
 import { Text } from "@/components/ui/typography";
 import { BrandWordmark } from "./brand-wordmark";
@@ -21,9 +23,19 @@ import { BrandWordmark } from "./brand-wordmark";
  *
  * There is no newsletter form here either. It lives once, on the home page,
  * rather than twice on every page.
+ *
+ * The category links are database rows, passed down from the store layout, so
+ * renaming or retiring a collection changes the footer without a deployment.
+ * They are inserted into the Shop group rather than forming a fifth column,
+ * which keeps the four-column grid the footer was designed around.
  */
-export function SiteFooter() {
+export function SiteFooter({
+  categories,
+}: {
+  categories: readonly Pick<StorefrontCategory, "slug" | "name">[];
+}) {
   const year = new Date().getFullYear();
+  const groups = withCategories(footerNav, categories);
 
   return (
     <footer className="mt-auto border-t border-line bg-surface">
@@ -36,7 +48,7 @@ export function SiteFooter() {
             </Text>
           </div>
 
-          {footerNav.map((group) => (
+          {groups.map((group) => (
             <nav key={group.title} aria-labelledby={`footer-${group.title}`}>
               <h2
                 id={`footer-${group.title}`}
@@ -86,4 +98,39 @@ export function SiteFooter() {
       </Container>
     </footer>
   );
+}
+
+/**
+ * Slot the live categories into the Shop column, after "Everything".
+ *
+ * The navigation config owns the structural links and knows nothing about the
+ * catalogue; this is where the two are joined, once, on the way to the render.
+ */
+function withCategories(
+  groups: readonly NavGroup[],
+  categories: readonly Pick<StorefrontCategory, "slug" | "name">[],
+): NavGroup[] {
+  if (categories.length === 0) {
+    return groups.map((group) => ({ ...group, items: [...group.items] }));
+  }
+
+  return groups.map((group) => {
+    if (group.title !== "Shop") {
+      return { ...group, items: [...group.items] };
+    }
+
+    const [everything, ...rest] = group.items;
+
+    return {
+      ...group,
+      items: [
+        ...(everything ? [everything] : []),
+        ...categories.map((category) => ({
+          label: category.name,
+          href: `/shop?category=${category.slug}` as Route,
+        })),
+        ...rest,
+      ],
+    };
+  });
 }

@@ -4,9 +4,11 @@ How the customer-facing interface is put together, and why. Written for
 engineers joining the repository.
 
 Phase 4 built the storefront and the reusable commerce component system.
-**There is no catalogue behind it yet.** Products, categories and their images
-come from a clearly marked mock layer that Phase 5 deletes. Nothing in
-`components/` knows that.
+Phase 5 put a real catalogue behind it and, because no component knew where its
+data came from, changed almost nothing on this page.
+
+For the catalogue itself — the models, the services, filtering, facets,
+pricing and the seed — read [docs/catalog/README.md](../catalog/README.md).
 
 ---
 
@@ -17,14 +19,15 @@ Being able to tell these apart is the most important thing on this page.
 | Area | State |
 | --- | --- |
 | Layout, navigation, drawers, search panel | Real and working |
-| Filtering, sorting, paging | Real, driven by the URL |
-| Product cards, grid, gallery, selectors | Real components, mock data |
-| Product, category and price data | **Mock.** `src/features/storefront/mock/` |
-| Imagery | **Placeholder** photographs from Unsplash |
-| Search results | **Not implemented.** The panel says so |
+| Filtering, sorting, paging | Real, in the URL, answered by PostgreSQL |
+| Product cards, grid, gallery, selectors | Real components, real data |
+| Product, category, variant and price data | **Real.** PostgreSQL through `lib/services/` |
+| Search | **Real.** Server-side, submits to `/shop?q=…` |
+| Imagery | **Placeholder** photographs from Unsplash, in the database |
 | Wishlist saving | **Not implemented.** The control says so |
 | Add to bag, bag contents | **Not implemented.** The drawer says so |
 | Newsletter sign-up | **Not implemented.** The form says so |
+| Catalogue management | **Not implemented.** Edited through the seed |
 
 Nothing pretends. There is no fake cart count, no invented search results, no
 button that appears to save something and then loses it. Where a feature is
@@ -93,9 +96,8 @@ src/components/
 
 src/features/storefront/
 ├── components/     page sections: hero, category tiles, editorial, newsletter
-├── product-query.ts     the URL contract. Survives Phase 5
-├── use-product-filters.ts  writes filters to the URL, client
-└── mock/           TEMPORARY data. Deleted in Phase 5
+├── product-query.ts        the URL contract
+└── use-product-filters.ts  writes filters to the URL, client
 ```
 
 The split is by **what a thing knows**, not by where it appears. A `ui`
@@ -110,8 +112,8 @@ takes typed props.
 
 ## The product card contract
 
-This is the interface Phase 5 has to satisfy, and the reason the UI will not
-need rewriting.
+This is the interface the catalogue services satisfy, and the reason
+connecting a real database did not mean rewriting the interface.
 
 ```ts
 <ProductCard product={product} priority={false} sizes="..." />
@@ -175,16 +177,16 @@ URL search params
 parseProductQuery()        src/features/storefront/product-query.ts
         │  typed ProductQuery
         ▼
-listMockProducts(query)    ← Phase 5 replaces this call
+listProducts(query)        src/lib/services/product-service.ts
         │
         ▼
 ProductGrid                (server)
 ```
 
-`product-query.ts` is **not** mock scaffolding. It parses and validates
-everything arriving from a URL, discarding anything unrecognised, and Phase 5
-keeps it unchanged: the parsed query goes to a database call instead of to an
-array.
+`product-query.ts` owns the URL and nothing else. It parses and validates
+everything arriving from one, discarding anything unrecognised, and hands a
+typed `ProductQuery` to the service. It does not know Prisma exists, and the
+services do not read a query string.
 
 Navigation happens inside a `useTransition`, so the current results stay on
 screen and interactive while the next set is prepared. Filter changes use
@@ -212,7 +214,8 @@ as small as the interaction allows:
 | `search-overlay` | input state and panel |
 | `filter-panel`, `sort-select`, `active-filters` | write to the URL |
 | `product-gallery` | which photograph is shown |
-| `product-purchase-panel` | which colour and size are chosen |
+| `product-variant-selection` | the chosen colour and size, shared by the two below |
+| `product-purchase-panel` | renders the selectors and the buy controls |
 | `size-selector`, `colour-selector` | used by the panel above |
 | `use-product-filters`, `use-body-scroll-lock` | hooks |
 
@@ -220,8 +223,12 @@ Consequences worth knowing:
 
 - The home page, the shop page, the product page, every card and the footer are
   all server-rendered. The grid ships no JavaScript.
-- `SearchOverlay` takes its suggestions as **props**. It would otherwise pull
-  the whole mock catalogue into the browser bundle to render four links.
+- `SearchOverlay` takes its suggestions as **props**, from the store layout.
+  It would otherwise have to query the catalogue from the browser.
+- `ProductVariantProvider` wraps the product page's two-column grid so a colour
+  choice moves both the gallery and the size row. Everything inside it that is
+  not a control — the description, the details, the delivery notes — is still
+  server-rendered and passed through as children.
 - Reading the session for the account menu makes the store routes render per
   request rather than being statically generated. That is the cost of an
   authenticated header, noted in `docs/authentication/README.md`. Partial
@@ -231,12 +238,22 @@ Consequences worth knowing:
 
 ## Imagery
 
-Every URL used anywhere in the storefront is declared in
-`src/features/storefront/mock/media.ts`. No component contains one.
+No component contains a URL. There are exactly two sources:
 
-These are **development placeholders** from Unsplash, allowed in
-`next.config.ts` under `images.remotePatterns`. When real photography arrives,
-that module and that config entry go together.
+| Kind | Where it lives |
+| --- | --- |
+| Product and category photography | Database rows, written by `prisma/catalog/data.ts` |
+| Hero and editorial photography | `src/config/media.ts` |
+
+The split is by what the picture is. A product photograph is catalogue data
+that changes with the stock; the hero is brand imagery that changes with the
+brand, so it is configuration next to the wordmark and the announcement bar.
+
+Both are still **development placeholders** from Unsplash, which is the one
+reason `images.unsplash.com` is allowed in `next.config.ts`. The schema is not
+tied to it: `ProductImage.url` and `Category.imageUrl` are plain absolute URLs,
+so moving to Cloudinary, Vercel Blob or S3 is a seed change and a second entry
+in that config, not a migration.
 
 Rules that outlast the placeholders:
 
@@ -332,77 +349,88 @@ Reuse the primitives. Do not write a new button.
 
 ---
 
-## Mock data policy
+## Where the data comes from
 
-Read `src/features/storefront/mock/README.md`. In short:
+Nothing under `src/components/` queries anything. Three route files and the
+store layout read the catalogue, and everything below them receives props:
 
-- Eight products, four categories, one media module, one query module.
-- **Nothing under `src/components/` imports it.** The importers are the store
-  layout, the three catalogue routes, and the two editorial sections that need
-  a placeholder photograph.
-- No business logic depends on a mock id.
-- Do not grow it. Eight products is enough to see two grid rows, a sale price,
-  a sold-out state and every badge.
+| File | Reads |
+| --- | --- |
+| `app/(store)/layout.tsx` | `getCategoryNavigation()` — header, drawer, footer, search |
+| `app/(store)/page.tsx` | `getCategoryTiles()`, two `listMerchandisedProducts()` rails |
+| `app/(store)/shop/page.tsx` | `listProducts()`, `listFilterGroups()`, `getCategoryBySlug()` |
+| `app/(store)/shop/[slug]/page.tsx` | `getProductBySlug()`, `listRelatedProducts()` |
 
-The seam is `mock/query.ts`:
+That set is the seam. It is short on purpose: when the catalogue changed from
+an array to a database, these four files changed an import each and nothing
+else did.
 
-```ts
-listMockProducts(query)          // → { products, total, page, pageCount }
-findMockProductBySlug(slug)      // → ProductDetailData | undefined
-listMockProductSlugs()
-listMockCategories()
-listMockNewArrivals(limit)
-listMockRelatedProducts(slug, limit)
-listMockFilterGroups()
-```
+The services are in `src/lib/services/`, they are `server-only`, and they
+return the presentation types in `src/types/commerce.ts` — never a Prisma
+model. See [docs/catalog/README.md](../catalog/README.md).
 
 ---
 
-## Connecting the real catalogue in Phase 5
+## What Phase 5 changed up here
 
-```
-Prisma Product / Category
-        ▼
-src/lib/services/product-service.ts     (new, server-only)
-        │  maps rows → ProductCardData / ProductDetailData
-        ▼
-route files: /shop, /shop/[slug], /
-        ▼
-ProductCard · ProductGrid · ProductGallery · ProductPurchasePanel
-```
+Almost nothing, which was the point. The four route files above, plus:
 
-The steps, in order:
+- **`types/commerce.ts` grew two fields on `ProductDetailData`:**
+  `colourOptions`, carrying each colour's own photographs and its own size
+  availability, and `articleNumber`. The flat `images`, `sizes` and `colours`
+  stayed as the union across every colour, which is why the card, the grid and
+  the badges did not move. A real catalogue has two facts a flat list cannot
+  express: a garment is photographed separately in each colour, and cut in
+  different sizes in each colour.
+- **`product-query.ts` grew** a search term, four attribute groups and three
+  merchandising flags — all of which the Phase 4 filter panel had been designed
+  for but could not yet parse. Nothing that already existed changed name or
+  meaning.
+- **`filter-panel.tsx` gained a "Collections" fieldset** for the merchandising
+  flags, built from the same `FilterFieldset` as the others. The attribute
+  groups needed no change at all: the panel renders whatever `FilterGroup[]` it
+  is given, and the service now gives it seven groups instead of three.
+- **`search-overlay.tsx` submits** to `/shop?q=…` instead of explaining that
+  search is not connected.
+- **`product-purchase-panel.tsx` reads its selection from context** rather than
+  local state, so the gallery can follow the colour.
+- **The footer's category links come from the database**, so
+  `config/navigation.ts` holds no category list to go stale.
 
-1. Add `Product`, `Category` and whatever variant and image models the
-   catalogue needs, with a migration.
-2. Write `src/lib/services/product-service.ts` exposing the same seven
-   functions `mock/query.ts` does, taking the same `ProductQuery` and returning
-   the same types. Translate the query into a database query; build the facet
-   counts with an aggregation rather than by walking rows.
-3. Change the imports in `src/app/(store)/layout.tsx`,
-   `src/app/(store)/page.tsx`, `src/app/(store)/shop/page.tsx` and
-   `src/app/(store)/shop/[slug]/page.tsx`.
-4. Point `media.ts` consumers at real image URLs, then delete the module and
-   the Unsplash entry in `next.config.ts`.
-5. Delete `src/features/storefront/mock/`.
+No token, no spacing scale, no component appearance changed.
 
-No component changes. That is the whole point of the types.
+---
 
-Things to keep in mind while doing it:
+## Still not connected
 
-- `generateStaticParams` in the product route currently lists mock slugs. It
-  becomes a database query, or goes away in favour of on-demand rendering.
-- Product metadata in `generateMetadata` is already per-product; it will just
-  read real fields.
-- A `sitemap.ts` becomes worth writing once there are product URLs. There is
-  deliberately none today.
-- Wishlist and cart persistence are separate phases. Their UI is in place and
-  each control states that it is not connected, so wiring them up is adding a
-  Server Action and real state, not redesigning anything.
+- **Wishlist and cart persistence.** Their UI is in place and each control
+  states that it is not connected, so wiring them up is adding a write path
+  rather than designing a feature.
+- **Catalogue management.** No admin screens and no CRUD services. The schema
+  carries every field they will need.
+- **Reviews.** The product page has the section and says no reviews exist,
+  because none do.
 
 ---
 
 ## Verification
+
+### Phase 5
+
+The catalogue behind this interface is verified by `pnpm check:catalog` and
+`pnpm check:catalog:db`; see
+[docs/catalog/README.md](../catalog/README.md#verification) for what each
+covers.
+
+**The Phase 5 storefront was not re-verified in a browser.** There was no
+database available while it was built, so no page could be rendered with real
+rows, and no responsive or interaction pass was repeated. The Phase 4 results
+below still describe the components, none of which changed in appearance — but
+"the grid looks right with twenty-four real products" is not something anyone
+has looked at. Run the two checks above against a seeded database, then repeat
+the browser pass below, before treating the storefront as verified.
+
+### Phase 4
 
 What was actually run against a real browser, not assumed:
 

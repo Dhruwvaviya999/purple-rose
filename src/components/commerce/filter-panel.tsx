@@ -51,6 +51,33 @@ export function FilterPanel({ groups, className }: FilterPanelProps) {
         />
       </FilterFieldset>
 
+      {/* Merchandising, kept in its own group rather than mixed into
+          availability: these say what the shop has picked out, not what is on
+          the shelf. None of them is a sales figure. */}
+      <FilterFieldset legend="Collections">
+        <CheckboxRow
+          label="New arrivals"
+          checked={isSelected(productQueryParams.newArrival, "true")}
+          onChange={(checked) =>
+            setValue(productQueryParams.newArrival, checked ? "true" : null)
+          }
+        />
+        <CheckboxRow
+          label="Featured"
+          checked={isSelected(productQueryParams.featured, "true")}
+          onChange={(checked) =>
+            setValue(productQueryParams.featured, checked ? "true" : null)
+          }
+        />
+        <CheckboxRow
+          label="Purple Rose picks"
+          checked={isSelected(productQueryParams.bestSeller, "true")}
+          onChange={(checked) =>
+            setValue(productQueryParams.bestSeller, checked ? "true" : null)
+          }
+        />
+      </FilterFieldset>
+
       {groups.map((group) => (
         <FilterGroupFieldset
           key={group.param}

@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
-
 import type { ProductDetailData } from "@/types/commerce";
 import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/typography";
 import { ColourSelector } from "./colour-selector";
 import { SizeSelector } from "./size-selector";
+import { useProductVariantSelection } from "./product-variant-selection";
 import { WishlistButton } from "./wishlist-button";
 
 /**
@@ -15,7 +14,13 @@ import { WishlistButton } from "./wishlist-button";
  *
  * Kept to its own client component so the rest of the page, which is the
  * majority of it, stays server-rendered. The gallery is separate for the same
- * reason.
+ * reason, and the two share one selection through
+ * `ProductVariantProvider` so that choosing a colour changes both.
+ *
+ * **Which sizes are offered depends on the colour.** The size row is rebuilt
+ * from the selected colour's variants, so a piece cut XS to M in ivory and M
+ * to L in plum offers exactly that and strikes through the rest. The database
+ * decides; this only renders the answer.
  *
  * Adding to a bag has nowhere to go yet: there is no cart table and no action.
  * So the button says what it is waiting for instead of appearing to work.
@@ -23,15 +28,12 @@ import { WishlistButton } from "./wishlist-button";
  * the real behaviour and stays when checkout arrives.
  */
 export function ProductPurchasePanel({ product }: { product: ProductDetailData }) {
-  const firstAvailableColour =
-    product.colours.find((colour) => colour.available)?.slug ?? null;
-
-  const [colour, setColour] = useState<string | null>(firstAvailableColour);
-  const [size, setSize] = useState<string | null>(null);
+  const { colour, setColour, size, setSize, sizes } =
+    useProductVariantSelection();
 
   const selectedColour = product.colours.find((entry) => entry.slug === colour);
-  const hasSizes = product.sizes.length > 0;
-  const anySizeAvailable = product.sizes.some((entry) => entry.available);
+  const hasSizes = sizes.length > 0;
+  const anySizeAvailable = sizes.some((entry) => entry.available);
 
   return (
     <div className="space-y-7">
@@ -72,7 +74,7 @@ export function ProductPurchasePanel({ product }: { product: ProductDetailData }
           </div>
 
           <SizeSelector
-            sizes={product.sizes}
+            sizes={sizes}
             value={size}
             onChange={setSize}
             name={`size-${product.id}`}
@@ -81,7 +83,9 @@ export function ProductPurchasePanel({ product }: { product: ProductDetailData }
 
           {!anySizeAvailable ? (
             <Text size="sm" className="mt-3">
-              Every size is between production runs.
+              {selectedColour
+                ? `Every size in ${selectedColour.name.toLowerCase()} is between production runs.`
+                : "Every size is between production runs."}
             </Text>
           ) : null}
         </div>

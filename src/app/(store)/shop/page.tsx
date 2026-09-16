@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import type { Route } from "next";
 
+import { getCategoryBySlug } from "@/lib/services/category-service";
 import {
-  listMockCategories,
-  listMockFilterGroups,
-  listMockProducts,
-} from "@/features/storefront/mock/query";
+  listFilterGroups,
+  listProducts,
+} from "@/lib/services/product-service";
 import {
   activeFilterCount,
   parseProductQuery,
@@ -26,11 +26,56 @@ import { Container } from "@/components/ui/container";
 import { Section } from "@/components/ui/section";
 import { Heading, Text } from "@/components/ui/typography";
 
-export const metadata: Metadata = {
-  title: "Shop",
-  description:
-    "Every Purple Rose piece: cotton dresses, co-ord sets, short tops and semi-party wear.",
-};
+const DEFAULT_DESCRIPTION =
+  "Every Purple Rose piece: cotton dresses, co-ord sets, short tops and semi-party wear.";
+
+/**
+ * Metadata for the listing.
+ *
+ * A category-filtered listing is a page in its own right, so it gets the SEO
+ * copy an operator wrote for that collection and a canonical URL naming it.
+ * Nothing here is generated from a slug: a category with no copy falls back to
+ * the shop's own description rather than to an invented sentence.
+ *
+ * **Everything else is `noindex`.** Filters are a combinatorial space, and a
+ * search term is unbounded, so indexing them would offer a crawler an infinite
+ * number of near-identical pages. `follow` stays on, so the products linked
+ * from a filtered view are still discovered. The one canonical route to every
+ * product is `/shop/[slug]`, and the sitemap lists it.
+ */
+export async function generateMetadata(
+  props: PageProps<"/shop">,
+): Promise<Metadata> {
+  const searchParams = await props.searchParams;
+  const query = parseProductQuery(searchParams);
+
+  // One category and nothing else: the page is that collection.
+  const isPlainCategory =
+    query.categories.length === 1 && activeFilterCount(query) === 1;
+
+  const category =
+    isPlainCategory && query.categories[0]
+      ? await getCategoryBySlug(query.categories[0])
+      : null;
+
+  if (category) {
+    return {
+      title: category.seoTitle ?? category.name,
+      description:
+        category.seoDescription ?? (category.tagline || DEFAULT_DESCRIPTION),
+      alternates: { canonical: `/shop?category=${category.slug}` },
+    };
+  }
+
+  const narrowed = activeFilterCount(query) > 0;
+
+  return {
+    title: "Shop",
+    description: DEFAULT_DESCRIPTION,
+    alternates: { canonical: "/shop" },
+    ...(narrowed ? { robots: { index: false, follow: true } } : {}),
+  };
+}
 
 /**
  * The listing.
@@ -41,31 +86,47 @@ export const metadata: Metadata = {
  * filtered listing is a shareable URL rather than a state someone else cannot
  * reproduce.
  *
- * Data comes from the mock layer. That is the whole of what Phase 5 replaces
- * here: `listMockProducts(query)` becomes a service call taking the same
- * `ProductQuery` and returning the same shape.
+ * ## Rendering and caching
+ *
+ * Rendered per request, declared rather than inferred. That is the right
+ * answer for a listing: the filters are a combinatorial space, and caching a
+ * page per combination would fill a cache with URLs nobody visits twice. The
+ * work is three short queries against indexed columns, run together.
+ *
+ * Data comes from `product-service.ts`, which takes the same `ProductQuery`
+ * the mock layer took and returns the same presentation types.
  */
+export const dynamic = "force-dynamic";
 export default async function ShopPage(props: PageProps<"/shop">) {
   const searchParams = await props.searchParams;
   const query = parseProductQuery(searchParams);
 
-  const groups = listMockFilterGroups();
-  const categories = listMockCategories();
-  const { products, total, page, pageCount } = listMockProducts(query);
+  // The listing, its facets and the category heading do not depend on each
+  // other, so they are one round of queries rather than three in sequence.
+  const [{ products, total, page, pageCount }, groups, selectedCategory] =
+    await Promise.all([
+      listProducts(query),
+      listFilterGroups(query),
+      // A single selected category names the page, so arriving from a category
+      // link reads as that category rather than as an unexplained subset. With
+      // two or more selected there is no single name to use.
+      query.categories.length === 1 && query.categories[0]
+        ? getCategoryBySlug(query.categories[0])
+        : null,
+    ]);
 
   const filterCount = activeFilterCount(query);
 
-  // The single selected category names the page, so arriving from a category
-  // link reads as that category rather than as an unexplained subset.
-  const selectedCategory =
-    query.categories.length === 1
-      ? categories.find((entry) => entry.slug === query.categories[0])
-      : undefined;
+  const heading = query.search
+    ? `Results for “${query.search}”`
+    : (selectedCategory?.name ?? "Everything");
 
-  const heading = selectedCategory?.name ?? "Everything";
-  const intro =
-    selectedCategory?.tagline ??
-    "Considered pieces in fabrics that hold up, cut to be worn rather than kept for later.";
+  const intro = query.search
+    ? total === 0
+      ? "Nothing matched. Try a shorter term, or browse the collections."
+      : `${total} ${total === 1 ? "piece" : "pieces"} matching that search.`
+    : (selectedCategory?.tagline ||
+      "Considered pieces in fabrics that hold up, cut to be worn rather than kept for later.");
 
   return (
     <Section spacing="sm">
@@ -185,8 +246,9 @@ function pageHref(
 }
 
 /**
- * Nothing matched. Distinguishes "your filters are too narrow", which has an
- * obvious fix, from "there is no catalogue yet", which does not.
+ * Nothing matched. Distinguishes "what you asked for is too narrow", which has
+ * an obvious fix, from "the catalogue is empty", which does not and which only
+ * happens before anything has been published.
  */
 function NoMatches({ query }: { query: ProductQuery }) {
   const narrowed = activeFilterCount(query) > 0;
@@ -195,11 +257,19 @@ function NoMatches({ query }: { query: ProductQuery }) {
     <div className="mt-8 rounded-card border border-dashed border-line-strong bg-surface px-6 py-16 sm:py-20">
       <EmptyState
         icon={<CompassIcon />}
-        title={narrowed ? "Nothing matches those filters" : "Nothing to browse yet"}
+        title={
+          query.search
+            ? "Nothing matched that search"
+            : narrowed
+              ? "Nothing matches those filters"
+              : "Nothing to browse yet"
+        }
         description={
-          narrowed
-            ? "Try removing a filter or widening the price range."
-            : "Categories and pieces load from the store database. Once it is connected, this page becomes the full catalogue."
+          query.search
+            ? "Try a shorter term, a colour, or the name of a collection."
+            : narrowed
+              ? "Try removing a filter or widening the price range."
+              : "No pieces have been published yet. They appear here as soon as they are."
         }
         action={
           <ButtonLink href="/shop" variant="secondary">

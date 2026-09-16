@@ -6,7 +6,7 @@ The application is built as a single Next.js project: the storefront, the
 customer account area, the admin console and the backend all live here. There
 is no separate API service.
 
-> **Current phase: Phase 4 — storefront UI.** Complete.
+> **Current phase: Phase 5 — product and category catalogue.** Complete.
 >
 > - **Phase 1** built the project foundation: routing boundaries, design
 >   tokens, UI primitives and the store shell.
@@ -16,10 +16,13 @@ is no separate API service.
 >   database-backed sessions, roles and a protected admin area.
 > - **Phase 4** built the storefront: home page, listing, product page and a
 >   reusable commerce component system, with filtering and sorting in the URL.
+> - **Phase 5** put a real catalogue behind it: products, categories,
+>   variants, colours, sizes, stock, prices and colour-specific photography,
+>   with server-side search, filtering, facet counts, sorting and paging.
 >
-> **The catalogue is not real yet.** Products, categories and imagery come
-> from a clearly marked mock layer that Phase 5 deletes. See
-> [What is not built yet](#what-is-not-built-yet).
+> The mock catalogue is gone. What the storefront renders comes from
+> PostgreSQL. See [Phase 5 — product and category
+> catalogue](#phase-5--product-and-category-catalogue).
 
 ---
 
@@ -102,7 +105,13 @@ Verification:
 ```bash
 pnpm check:auth          # authentication logic; no database needed
 pnpm check:auth:db       # full auth flows; needs DATABASE_URL and AUTH_SECRET
+pnpm check:catalog       # catalogue logic and seed content; no database needed
+pnpm check:catalog:db    # listing, filters, facets, search; needs DATABASE_URL
 ```
+
+`pnpm check:catalog:db` re-runs the catalogue seed to prove that doing so
+changes nothing. That is the same write `pnpm db:seed` performs, so run it
+against a development database.
 
 ## Environment setup
 
@@ -138,17 +147,22 @@ Three rules hold for the whole project:
 
 ## Routes
 
-| Route         | Purpose                                         |
-| ------------- | ----------------------------------------------- |
-| `/`           | Storefront home — brand shell                   |
-| `/shop`       | Catalogue — empty until products exist          |
-| `/shop/[slug]`| Product page. Mock data; slugs come from the mock layer |
-| `/wishlist`   | Wishlist shell. Saving is not implemented       |
-| `/cart`       | Bag shell. Carts are not implemented            |
-| `/login`      | Phone plus one-time code sign-in, public        |
-| `/admin`      | Admin overview. **ADMIN only**, never indexed   |
-| `/api/health` | Liveness and database reachability probe        |
-| `/robots.txt` | Crawl rules, generated from `src/app/robots.ts` |
+| Route          | Purpose                                                        |
+| -------------- | -------------------------------------------------------------- |
+| `/`            | Storefront home: category tiles and two product rails          |
+| `/shop`        | The catalogue: search, filters, sort and paging, all in the URL |
+| `/shop/[slug]` | Product page. Real slugs; rendered on demand, cached for an hour |
+| `/wishlist`    | Wishlist shell. Saving is not implemented                      |
+| `/cart`        | Bag shell. Carts are not implemented                           |
+| `/login`       | Phone plus one-time code sign-in, public                       |
+| `/admin`       | Admin overview. **ADMIN only**, never indexed                  |
+| `/api/health`  | Liveness and database reachability probe                       |
+| `/robots.txt`  | Crawl rules, generated from `src/app/robots.ts`                |
+| `/sitemap.xml` | Public pages, active categories and active products            |
+
+Categories are a filtered listing, `/shop?category=cotton-dresses`, not a route
+of their own. There is deliberately one URL for a set of products rather than
+two competing ones.
 
 ## Folder structure
 
@@ -156,18 +170,24 @@ Three rules hold for the whole project:
 prisma/
 ├── schema.prisma             models and enums — the written shape of the data
 ├── migrations/               committed SQL history; reviewed in pull requests
-└── seed.ts                   idempotent seed, no sample catalogue
+├── seed.ts                   idempotent seed: catalogue, plus optional admin
+└── catalog/
+    ├── data.ts               what the catalogue contains
+    └── seed.ts               how it is written, repeatably
 
 prisma7.config.ts             Prisma 7 CLI config: URLs, migration path, seed
 
 scripts/
 ├── check-auth.ts             auth logic checks, no database needed
-└── check-auth-db.ts          full auth flow checks against a real database
+├── check-auth-db.ts          full auth flow checks against a real database
+├── check-catalog.ts          catalogue logic and seed content, no database
+└── check-catalog-db.ts       listing, filters, facets and search, live database
 
 docs/
 ├── database/README.md        database architecture, decisions and workflows
 ├── authentication/README.md  auth architecture, OTP lifecycle, security notes
-└── storefront/README.md      component system, product contract, mock policy
+├── storefront/README.md      component system and the product data contract
+└── catalog/README.md         catalogue domain, services, filtering, seeding
 
 src/
 ├── proxy.ts                  optimistic request guard (Next.js 16 convention)
@@ -203,7 +223,7 @@ src/
 │
 ├── features/
 │   ├── auth/                 sign-in form, OTP input, sign-out control
-│   └── storefront/           page sections, URL query contract, mock data
+│   └── storefront/           page sections and the URL query contract
 ├── actions/
 │   └── auth.ts               the only two authentication endpoints
 │
@@ -211,6 +231,7 @@ src/
 │
 ├── lib/
 │   ├── auth/                 sessions, roles, OTP crypto, phone normalisation
+│   ├── catalog/              filters, row mapping, attribute vocabularies
 │   ├── db/client.ts          the single Prisma Client (server-only)
 │   ├── utils/                framework-agnostic helpers
 │   ├── services/             the only layer that queries the database
@@ -223,9 +244,9 @@ src/
 └── types/                    shared types, including the commerce contract
 ```
 
-`features/` holds one folder per business capability; `auth` is the first.
-Each layer keeps a README stating the rules for what goes in it, so the
-conventions stay fixed as features arrive.
+`features/` holds one folder per business capability. Each layer keeps a
+README stating the rules for what goes in it, so the conventions stay fixed as
+features arrive.
 
 ## Architecture overview
 
@@ -353,6 +374,57 @@ Mobile-first, with one shared gutter from the `Container` component. The
 navigation is a drawer below the `md` breakpoint and an inline menu above it.
 Layouts are composed to reflow rather than to shrink.
 
+## Phase 5 — product and category catalogue
+
+The storefront was built in Phase 4 against a mock layer. Phase 5 replaced that
+layer with PostgreSQL and changed almost nothing above it: the components, the
+design tokens and the URL contract are the ones that were already verified.
+
+Full detail is in [docs/catalog/README.md](docs/catalog/README.md). The short
+version:
+
+**Real models.** `Category`, `Product`, `ProductCategory`, `Size`, `Color`,
+`ProductVariant`, `Inventory` and `ProductImage`, plus enums for product status,
+fabric, pattern, fit and occasion. One migration,
+`20260916120000_add_catalog_domain`.
+
+**Variants, not text columns.** Every sellable combination of product, colour
+and size is a row with its own SKU and its own stock, and a unique constraint
+makes a duplicate "pink, M" impossible. The product page offers exactly the
+sizes the selected colour is cut in, and disables the rest.
+
+**Colour-specific photography.** `ProductImage.colorId` is nullable: an image
+belongs to one colour, or to all of them. Selecting a swatch switches the
+gallery to that colour's photographs immediately, without a page load, while
+the rest of the page stays server-rendered.
+
+**Categories are rows.** The header, the mobile drawer, the footer links, the
+home tiles and the category filter all follow the table. A product has one
+primary category for its card and breadcrumb, and any number of memberships, so
+a printed cotton dress can be in Cotton Dresses and Fresh Prints at once.
+
+**Search, filtering, sorting and paging happen in PostgreSQL.** Search covers
+names, descriptions, article numbers, collection names and colour names. Filter
+groups are ANDed and values inside a group are ORed; size and colour are
+matched against the same variant, so "pink in M" means a variant that is both.
+Facet counts are database aggregations that exclude their own group, so
+choosing a colour still shows the others. Paging is `LIMIT`/`OFFSET` with a
+stable tiebreak, never a full read sliced in memory.
+
+**Money is integer paise.** `₹1,299` is `129900`. No floats, no decimals, no
+strings — see [Money](docs/catalog/README.md#money). A product is on sale when
+`compareAtPrice` exists and is greater than `price`; the percentage is derived,
+never stored.
+
+**Seeded with 26 products.** Twenty-four live — exactly two pages — plus one
+draft and one archived, so "unpublished work is not public" is something the
+checks prove. Also five categories and one disabled one, six sizes and eight
+colours. Running the seed twice changes nothing.
+
+**Still to come:** admin catalogue management, inventory workflows, cart and
+wishlist persistence, orders, and real photography. The schema is shaped so
+none of them needs a redesign.
+
 ## What is not built yet
 
 Deliberately absent, each arriving in the phase that needs it:
@@ -361,20 +433,24 @@ Deliberately absent, each arriving in the phase that needs it:
   transport refuses to run in production
 - A customer account area. Signing in works; there is no profile or order
   history to show yet
-- **The real catalogue.** Products, categories, variants, inventory and
-  product management. The storefront renders a mock layer in
-  `src/features/storefront/mock/`, which Phase 5 deletes
-- **Real product photography.** Development placeholders come from Unsplash
-- **Search results.** The search panel is built and states that nothing is
-  being queried
+- **Catalogue management.** The models support every field an admin panel
+  needs, but there are no CRUD services and no admin screens. The catalogue is
+  edited through the seed or Prisma Studio
+- **Inventory workflows.** Stock is counted and availability is real; there are
+  no adjustments, reservations, stock takes or returns
+- **Real product photography.** Development placeholders come from Unsplash,
+  declared in `prisma/catalog/data.ts` and `src/config/media.ts`. No component
+  contains a URL
 - **Wishlist and bag persistence.** Both have their UI and both say they are
   not connected
 - **Newsletter sending.** The form is built and disabled
+- **Sales analytics.** There are no orders, so nothing knows what has sold.
+  `bestSeller` is a merchandising flag an operator sets, and is never presented
+  as a ranking
 - Cart, wishlist, checkout, orders, payments
 - Coupons, reviews, shipping and email providers
 - Image upload and media storage
-- Real admin functionality
-- Per-product and per-category SEO, sitemap
+- A size guide. `Size` carries measurements; nothing renders them
 - Dark theme
 
 The database models for all of the above are also absent on purpose. See
@@ -388,7 +464,7 @@ The database models for all of the above are also absent on purpose. See
 | 2     | Database foundation: PostgreSQL, Neon, Prisma — **done**     |
 | 3     | Phone-number authentication with one-time codes — **done**   |
 | 4     | Storefront UI and commerce component system — **done**       |
-| 5     | Product, category and variant catalogue behind that UI       |
+| 5     | Product, category and variant catalogue behind that UI — **done** |
 | 6     | Bag and wishlist persistence                                 |
 | 7     | Checkout, payments and orders                                |
 | 8     | Admin console: catalogue, inventory and order management     |

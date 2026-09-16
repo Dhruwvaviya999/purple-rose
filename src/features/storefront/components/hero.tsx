@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-import { storefrontMedia } from "@/features/storefront/mock/media";
+import { brandMedia } from "@/config/media";
 import { ArrowRightIcon } from "@/components/shared/icons";
 import { ButtonLink } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
@@ -60,8 +60,8 @@ export function Hero() {
           <div className="order-1 lg:order-2">
             <div className="relative aspect-[4/5] w-full overflow-hidden rounded-card bg-surface sm:aspect-[3/2] lg:aspect-[4/5]">
               <Image
-                src={storefrontMedia.hero.src}
-                alt={storefrontMedia.hero.alt}
+                src={brandMedia.hero.src}
+                alt={brandMedia.hero.alt}
                 fill
                 priority
                 sizes="(min-width: 1024px) 45vw, 100vw"

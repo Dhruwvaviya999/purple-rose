@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-import { storefrontMedia } from "@/features/storefront/mock/media";
+import { brandMedia } from "@/config/media";
 import type { StorefrontImage } from "@/types/commerce";
 import { ButtonLink } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
@@ -83,7 +83,7 @@ export function BrandStoryPanel() {
       eyebrow="How we make things"
       title="Fewer pieces, chosen properly"
       body="We put out small collections a few times a year instead of something new every week. Every fabric is worn and washed before it goes into production, and anything that pills, creases badly or loses its shape does not make it. It means less to choose from, and less that disappoints."
-      image={storefrontMedia.editorial}
+      image={brandMedia.editorial}
       surface="surface"
     />
   );
@@ -96,7 +96,7 @@ export function SeasonalPanel() {
       eyebrow="This season"
       title="Built for heat, and for the rain after it"
       body="Cottons and light blends that breathe through a long afternoon, in prints that hide a crease. Cut loose through the body, with pockets where you would actually put your hands."
-      image={storefrontMedia.seasonal}
+      image={brandMedia.seasonal}
       cta={{ label: "See what is new", href: "/shop?sort=newest" }}
       reverse
       surface="canvas"

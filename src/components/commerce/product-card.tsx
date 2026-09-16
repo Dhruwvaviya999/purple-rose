@@ -12,8 +12,8 @@ import { WishlistButton } from "./wishlist-button";
  * A product in a listing.
  *
  * A Server Component. It takes typed data through props, runs no query and
- * knows nothing about where the data came from, so the same card renders mock
- * data today and database rows in Phase 5 without changing.
+ * knows nothing about where the data came from. That is why connecting the
+ * real catalogue in Phase 5 did not change a line of it.
  *
  * The whole card is one link, with the image and the name inside it, so the
  * tap target on a phone is the card rather than a line of text. The wishlist

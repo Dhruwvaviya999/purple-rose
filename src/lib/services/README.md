@@ -20,6 +20,23 @@ The Prisma Client lives in `src/lib/db/client.ts`, not here. Import it:
 import { prisma } from "@/lib/db/client";
 ```
 
-This folder is empty on purpose: the first services arrive with the first
-feature that reads or writes data. See `docs/database/README.md` for the
-data access conventions.
+## What is here
+
+| Service                | Covers                                                    |
+| ---------------------- | --------------------------------------------------------- |
+| `otp-service.ts`       | Issuing and verifying one-time codes                      |
+| `session-service.ts`   | Creating, reading and revoking sessions                   |
+| `user-service.ts`      | Finding or creating an account for a phone number          |
+| `product-service.ts`   | Listing, search, facets, product detail, related products  |
+| `category-service.ts`  | Active categories: navigation, tiles, lookup, sitemap      |
+
+The catalogue services keep their query-building and row-mapping in
+`src/lib/catalog/`, so the service files stay readable as the list of
+operations they expose. See `docs/catalog/README.md`.
+
+One rule worth repeating because it is the one that gets broken: **a public
+read filters on status or `isActive` inside the query**, not afterwards. A
+draft product or a disabled category must be impossible to return, rather than
+merely unlikely to be rendered.
+
+See `docs/database/README.md` for the data access conventions.

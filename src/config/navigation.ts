@@ -12,13 +12,19 @@ import type { NavGroup, NavLink } from "@/types/navigation";
  *    non-interactive text with the reason attached, so the footer never
  *    advertises a policy page that is not written.
  *
- * Category links point at `/shop` with a `category` parameter, which the shop
- * page already reads. They keep working unchanged when categories become
- * database rows: only where the list comes from changes.
+ * There are deliberately **no category links in this file.** Categories are
+ * database rows, so a list of them here would be a second source of truth that
+ * goes stale the moment one is renamed, added or disabled. The header, the
+ * mobile drawer and the footer all receive the live list from
+ * `category-service.ts` and build their own links, which always point at
+ * `/shop` with a `category` parameter.
  */
 export const primaryNav: readonly NavLink[] = [
   { label: "Shop", href: "/shop" },
-  { label: "New in", href: "/shop?sort=newest" },
+  // The new-arrival flag rather than a newest-first sort: "New in" is the
+  // pieces the shop has chosen to present as new, not simply the last rows
+  // that happened to be created.
+  { label: "New in", href: "/shop?new=true" },
   { label: "Sale", href: "/shop?sale=true" },
 ] as const;
 
@@ -27,10 +33,7 @@ export const footerNav: readonly NavGroup[] = [
     title: "Shop",
     items: [
       { label: "Everything", href: "/shop" },
-      { label: "New in", href: "/shop?sort=newest" },
-      { label: "Cotton dresses", href: "/shop?category=cotton-dresses" },
-      { label: "Co-ord sets", href: "/shop?category=co-ord-sets" },
-      { label: "Short tops", href: "/shop?category=short-tops" },
+      { label: "New in", href: "/shop?new=true" },
       { label: "Sale", href: "/shop?sale=true" },
     ],
   },
