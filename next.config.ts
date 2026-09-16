@@ -1,5 +1,9 @@
 import type { NextConfig } from "next";
 
+// A relative path, not the "@/" alias: this file is loaded by the Next CLI
+// before the application's module graph and its path mapping exist.
+import { allowedImageHosts } from "./src/config/images";
+
 const nextConfig: NextConfig = {
   // Statically type every `href`, so navigation config cannot reference a
   // route that does not exist. Route types are generated into `.next/types`.
@@ -8,18 +12,23 @@ const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: false },
   poweredByHeader: false,
   images: {
-    // Development placeholder photography.
+    // Derived from src/config/images.ts, which the admin validation schema
+    // also reads. One list: a URL the admin panel accepts is a URL this
+    // config can render, and a host that is not here is refused in the form
+    // rather than throwing on a product page.
     //
-    // Two things still point at this host and nothing else does: the brand
-    // imagery in src/config/media.ts, and the product and category image URLs
-    // written by prisma/seed.ts. No component builds a URL.
+    // Today that is the development placeholder photography host. The brand
+    // imagery in src/config/media.ts and the catalogue rows written by
+    // prisma/seed.ts both point at it; no component builds a URL.
     //
     // The schema is not tied to it: ProductImage.url and Category.imageUrl are
     // plain absolute URLs, so moving to Cloudinary, Vercel Blob or S3 is a
-    // seed change plus a second entry here, not a migration.
-    remotePatterns: [
-      { protocol: "https", hostname: "images.unsplash.com", pathname: "/**" },
-    ],
+    // change to that list, not a migration.
+    remotePatterns: allowedImageHosts.map((hostname) => ({
+      protocol: "https" as const,
+      hostname,
+      pathname: "/**",
+    })),
   },
 };
 

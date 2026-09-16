@@ -17,7 +17,9 @@
     "check:auth": "tsx --conditions=react-server scripts/check-auth.ts",
     "check:auth:db": "tsx --conditions=react-server scripts/check-auth-db.ts",
     "check:catalog": "tsx --conditions=react-server scripts/check-catalog.ts",
-    "check:catalog:db": "tsx --conditions=react-server scripts/check-catalog-db.ts"
+    "check:catalog:db": "tsx --conditions=react-server scripts/check-catalog-db.ts",
+    "check:admin": "tsx --conditions=react-server scripts/check-admin.ts",
+    "check:admin:http": "tsx --conditions=react-server scripts/check-admin-http.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

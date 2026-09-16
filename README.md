@@ -6,7 +6,7 @@ The application is built as a single Next.js project: the storefront, the
 customer account area, the admin console and the backend all live here. There
 is no separate API service.
 
-> **Current phase: Phase 5 — product and category catalogue.** Complete.
+> **Current phase: Phase 6 — admin catalogue management.** Complete.
 >
 > - **Phase 1** built the project foundation: routing boundaries, design
 >   tokens, UI primitives and the store shell.
@@ -19,10 +19,12 @@ is no separate API service.
 > - **Phase 5** put a real catalogue behind it: products, categories,
 >   variants, colours, sizes, stock, prices and colour-specific photography,
 >   with server-side search, filtering, facet counts, sorting and paging.
+> - **Phase 6** built the admin area that manages it: product and collection
+>   screens, variants and stock, photography, publishing and archiving, all
+>   behind server-side authorisation.
 >
-> The mock catalogue is gone. What the storefront renders comes from
-> PostgreSQL. See [Phase 5 — product and category
-> catalogue](#phase-5--product-and-category-catalogue).
+> The catalogue is edited through `/admin`, not by rewriting the seed. See
+> [Phase 6 — admin catalogue management](#phase-6--admin-catalogue-management).
 
 ---
 
@@ -107,11 +109,24 @@ pnpm check:auth          # authentication logic; no database needed
 pnpm check:auth:db       # full auth flows; needs DATABASE_URL and AUTH_SECRET
 pnpm check:catalog       # catalogue logic and seed content; no database needed
 pnpm check:catalog:db    # listing, filters, facets, search; needs DATABASE_URL
+pnpm check:admin         # admin mutations and the guard audit; needs DATABASE_URL
+pnpm check:admin:http    # admin access control; needs a running server as well
 ```
 
 `pnpm check:catalog:db` re-runs the catalogue seed to prove that doing so
-changes nothing. That is the same write `pnpm db:seed` performs, so run it
-against a development database.
+changes nothing. `pnpm check:admin` creates and deletes its own records, and
+`pnpm check:admin:http` briefly archives one seeded product and restores it.
+All three write, so run them against a development database.
+
+`pnpm check:admin:http` needs the app running. Start it first, or point it
+somewhere else:
+
+```bash
+pnpm build && pnpm start
+pnpm check:admin:http
+# or
+CHECK_BASE_URL=http://localhost:3100 pnpm check:admin:http
+```
 
 ## Environment setup
 
@@ -155,7 +170,13 @@ Three rules hold for the whole project:
 | `/wishlist`    | Wishlist shell. Saving is not implemented                      |
 | `/cart`        | Bag shell. Carts are not implemented                           |
 | `/login`       | Phone plus one-time code sign-in, public                       |
-| `/admin`       | Admin overview. **ADMIN only**, never indexed                  |
+| `/admin`       | Catalogue dashboard. **ADMIN only**, never indexed             |
+| `/admin/products`      | Product list: search, filter, sort, page               |
+| `/admin/products/new`  | Create a product                                      |
+| `/admin/products/[id]` | Edit, publish, variants, photographs                  |
+| `/admin/categories`    | Collections: list, reorder, switch on and off         |
+| `/admin/categories/new` | Create a collection                                  |
+| `/admin/categories/[id]` | Edit a collection                                   |
 | `/api/health`  | Liveness and database reachability probe                       |
 | `/robots.txt`  | Crawl rules, generated from `src/app/robots.ts`                |
 | `/sitemap.xml` | Public pages, active categories and active products            |
@@ -181,13 +202,16 @@ scripts/
 ├── check-auth.ts             auth logic checks, no database needed
 ├── check-auth-db.ts          full auth flow checks against a real database
 ├── check-catalog.ts          catalogue logic and seed content, no database
-└── check-catalog-db.ts       listing, filters, facets and search, live database
+├── check-catalog-db.ts       listing, filters, facets and search, live database
+├── check-admin.ts            admin mutations, plus the "every action is guarded" audit
+└── check-admin-http.ts       admin access control, against a running server
 
 docs/
 ├── database/README.md        database architecture, decisions and workflows
 ├── authentication/README.md  auth architecture, OTP lifecycle, security notes
 ├── storefront/README.md      component system and the product data contract
-└── catalog/README.md         catalogue domain, services, filtering, seeding
+├── catalog/README.md         catalogue domain, services, filtering, seeding
+└── admin-catalog/README.md   admin architecture, authorisation, mutations
 
 src/
 ├── proxy.ts                  optimistic request guard (Next.js 16 convention)
@@ -203,8 +227,10 @@ src/
 │   │   ├── layout.tsx
 │   │   └── login/page.tsx    /login
 │   ├── admin/                admin area: own chrome, never indexed
-│   │   ├── layout.tsx
-│   │   └── page.tsx          /admin
+│   │   ├── layout.tsx        sidebar shell, the role gate
+│   │   ├── page.tsx          /admin — catalogue dashboard
+│   │   ├── products/         list, create, edit
+│   │   └── categories/       list, create, edit
 │   ├── api/health/route.ts   liveness and database probe
 │   ├── globals.css           design tokens and base styles
 │   ├── layout.tsx            root layout: fonts, metadata, html/body
@@ -225,16 +251,19 @@ src/
 │   ├── auth/                 sign-in form, OTP input, sign-out control
 │   └── storefront/           page sections and the URL query contract
 ├── actions/
-│   └── auth.ts               the only two authentication endpoints
+│   ├── auth.ts               the only two authentication endpoints
+│   └── admin/                catalogue mutations, one module per feature
 │
 ├── generated/prisma/         Prisma Client — generated on install, git-ignored
 │
 ├── lib/
 │   ├── auth/                 sessions, roles, OTP crypto, phone normalisation
+│   ├── admin/                money conversion, admin URL contract, action plumbing
 │   ├── catalog/              filters, row mapping, attribute vocabularies
 │   ├── db/client.ts          the single Prisma Client (server-only)
 │   ├── utils/                framework-agnostic helpers
 │   ├── services/             the only layer that queries the database
+│   │   └── admin/            the catalogue write path
 │   ├── validations/          input schemas, reused by forms and actions
 │   ├── env.ts                browser-safe environment access
 │   └── env.server.ts         server-only environment access (server-only)
@@ -425,6 +454,60 @@ colours. Running the seed twice changes nothing.
 wishlist persistence, orders, and real photography. The schema is shaped so
 none of them needs a redesign.
 
+## Phase 6 — admin catalogue management
+
+The catalogue was real in Phase 5 but was edited by rewriting the seed. Phase 6
+built the screens that manage it.
+
+Full detail is in
+[docs/admin-catalog/README.md](docs/admin-catalog/README.md). The short version:
+
+**Seven admin routes.** A dashboard of real catalogue counts, a product list
+with server-side search, filtering, sorting and paging, create and edit screens
+for products and collections, and variant, stock and photography management on
+the product edit page.
+
+**Authorisation is at the endpoint.** Every Server Action calls
+`requireAdminActor()` before it reads anything, because a form is markup and the
+request behind it can be sent without ever loading the page. `pnpm check:admin`
+reads every action module and fails if one is missing the guard, so it cannot be
+forgotten when a new action is added. Pages and the layout check too; the proxy
+is an optimistic filter and not a boundary.
+
+**One catalogue, two paths.** The storefront's read services still refuse to
+return anything that is not `ACTIVE`; a separate set of admin services edits
+exactly those. Keeping them in different modules is what stops the public
+storefront being one boolean away from showing unpublished work.
+
+**Nothing is deleted.** Products archive, collections and variants switch off,
+and all of it stays referenceable by the orders that do not exist yet. The one
+real delete is a photograph, which nothing will ever reference.
+
+**Money stays exact.** The admin types rupees and the database stores paise, and
+the conversion is integer arithmetic — `Number("12.10") * 100` is
+`1209.9999999999998`, and the checks cover that case specifically.
+
+**Image URLs, not uploads.** Addresses on an allowlisted host, shared between
+`next.config.ts` and the validation schema, so a host the shop cannot render is
+refused in the form rather than breaking a product page. Only `https` is
+accepted, which rules out `javascript:` and `data:` by allowing one scheme
+rather than blocking many.
+
+**Stale writes are refused.** Product and category saves are pinned to the
+version the form was rendered from, so a second administrator is told to reload
+instead of silently reverting the first one's work — including fields their form
+never showed.
+
+**One migration**, `20260916180000_catalog_check_constraints`: four CHECK
+constraints for non-negative stock, non-negative prices, and a compare-at price
+that is genuinely higher than the price. No new models or columns.
+
+**The dashboard has no revenue on it.** There are no orders, so there is no
+figure that could be real, and the page says so.
+
+**Still to come:** colour and size screens, stock movements, an audit log, image
+uploads, and everything downstream of an order.
+
 ## What is not built yet
 
 Deliberately absent, each arriving in the phase that needs it:
@@ -433,11 +516,11 @@ Deliberately absent, each arriving in the phase that needs it:
   transport refuses to run in production
 - A customer account area. Signing in works; there is no profile or order
   history to show yet
-- **Catalogue management.** The models support every field an admin panel
-  needs, but there are no CRUD services and no admin screens. The catalogue is
-  edited through the seed or Prisma Studio
-- **Inventory workflows.** Stock is counted and availability is real; there are
-  no adjustments, reservations, stock takes or returns
+- **Colour and size management.** Variants are built from the existing palette
+  and size run; adding a new colour is still a seed change
+  - **An audit log.** `updatedAt` records when something changed, never who
+- **Inventory workflows.** Stock can be corrected from the admin area; there
+  are no adjustments with reasons, reservations, stock takes or returns
 - **Real product photography.** Development placeholders come from Unsplash,
   declared in `prisma/catalog/data.ts` and `src/config/media.ts`. No component
   contains a URL
@@ -465,9 +548,9 @@ The database models for all of the above are also absent on purpose. See
 | 3     | Phone-number authentication with one-time codes — **done**   |
 | 4     | Storefront UI and commerce component system — **done**       |
 | 5     | Product, category and variant catalogue behind that UI — **done** |
-| 6     | Bag and wishlist persistence                                 |
-| 7     | Checkout, payments and orders                                |
-| 8     | Admin console: catalogue, inventory and order management     |
-| 9     | Coupons, reviews, full SEO and performance work              |
+| 6     | Admin console: catalogue management — **done**                |
+| 7     | Bag and wishlist persistence                                 |
+| 8     | Checkout, payments and orders                                |
+| 9     | Inventory workflows, coupons, reviews, image uploads         |
 
 Each phase adds the database models its feature needs, through a migration.

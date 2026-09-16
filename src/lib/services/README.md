@@ -29,6 +29,14 @@ import { prisma } from "@/lib/db/client";
 | `user-service.ts`      | Finding or creating an account for a phone number          |
 | `product-service.ts`   | Listing, search, facets, product detail, related products  |
 | `category-service.ts`  | Active categories: navigation, tiles, lookup, sitemap      |
+| `admin/`               | The catalogue **write** path, plus the reads admin screens need |
+
+`admin/` is a separate folder, not a set of extra exports on the two services
+above, and that separation is load-bearing. The public services exist to make
+drafts and archived products unreachable — every query they build starts with
+`status: ACTIVE`. The admin ones exist to edit exactly those. One module doing
+both would put the storefront one boolean argument away from showing
+unpublished work.
 
 The catalogue services keep their query-building and row-mapping in
 `src/lib/catalog/`, so the service files stay readable as the list of

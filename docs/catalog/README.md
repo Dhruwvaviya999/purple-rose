@@ -10,7 +10,9 @@ has.
 
 For general Prisma and PostgreSQL conventions read
 [`docs/database/README.md`](../database/README.md). For the components this
-feeds, read [`docs/storefront/README.md`](../storefront/README.md).
+feeds, read [`docs/storefront/README.md`](../storefront/README.md). For the
+screens that **write** this catalogue, read
+[`docs/admin-catalog/README.md`](../admin-catalog/README.md).
 
 ---
 
@@ -202,9 +204,10 @@ There is no ledger, no reservation and no warehouse, because nothing calls for
 them yet. A variant with no inventory row at all is treated as unavailable,
 which is the safe reading of missing stock data.
 
-A `CHECK (quantity >= 0)` constraint belongs here and is deliberately deferred
-to the first write path that decrements stock; nothing writes a negative value
-today.
+A `CHECK (quantity >= 0)` constraint belongs here, and Phase 6 added it —
+along with one for `lowStockThreshold` — when the admin area introduced the
+first write path that is not the seed. See
+[Database changes](../admin-catalog/README.md#database-changes).
 
 ---
 
@@ -230,7 +233,11 @@ is 1/100.
 
 The conversion to something a person reads happens once, at the presentation
 boundary, in
-[`src/lib/utils/format-price.ts`](../../src/lib/utils/format-price.ts).
+[`src/lib/utils/format-price.ts`](../../src/lib/utils/format-price.ts). The
+conversion the other way — what an administrator types into what is stored —
+happens once too, in
+[`src/lib/admin/money.ts`](../../src/lib/admin/money.ts), and never through a
+float.
 
 The URL is the one place amounts are not in paise: `?min=2000` means two
 thousand rupees, because that is what a shopper types. `parseProductQuery`
@@ -843,9 +850,10 @@ mode and a reporter, that is the moment to add one.
 Deliberately out of scope, and the schema is shaped so none of them needs a
 redesign:
 
-- **Admin catalogue management.** No CRUD services exist. Every field an admin
-  panel needs — status, merchandising flags, positions, SEO, stock,
-  measurements — is already a column.
+- **Colour and size management.** Phase 6 built the admin area for products,
+  collections, variants, stock and photography; colours and sizes are still
+  seeded. See
+  [Known limitations](../admin-catalog/README.md#known-limitations).
 - **Inventory workflows.** Adjustments, reservations, stock takes, returns.
   `Inventory` is the table they attach to.
 - **Cart, wishlist, orders, checkout, payment, coupons, reviews.** The wishlist

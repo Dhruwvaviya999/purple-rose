@@ -518,9 +518,11 @@ model Inventory {
   variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
 
   /// Units on hand. A variant is orderable when this is above zero.
-  /// The application never writes a negative value; a CHECK constraint is the
-  /// right home for that rule and is added with the first write path that
-  /// decrements stock.
+  ///
+  /// Never negative. The application validates it, and since Phase 6 a CHECK
+  /// constraint enforces it in the database as well, added with the first
+  /// write path that is not the seed. Prisma's schema language cannot express
+  /// a CHECK, so it lives in 20260916180000_catalog_check_constraints.
   quantity Int @default(0)
 
   /// Where "only a few left" begins, per variant, because a staple and a

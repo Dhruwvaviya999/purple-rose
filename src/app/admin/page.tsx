@@ -1,79 +1,210 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+
 import { requireAdmin } from "@/lib/auth/current-user";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardHeader } from "@/components/ui/card";
-import { Heading, Text } from "@/components/ui/typography";
+import {
+  getCatalogMetrics,
+  listLowStockVariants,
+  listRecentlyUpdatedProducts,
+} from "@/lib/services/admin/catalog-dashboard-service";
+import {
+  AdminEmptyState,
+  AdminPageHeader,
+  AdminPanel,
+  MetricTile,
+  StatusPill,
+  formatAdminDate,
+} from "@/features/admin/components/admin-ui";
+import { ButtonLink } from "@/components/ui/button";
+
+export const metadata: Metadata = { title: "Overview" };
 
 /**
  * Admin overview.
  *
- * A structural placeholder: no store data is connected, so no metrics are
- * shown. Reporting appears once orders and inventory exist.
+ * **Every number on this page is a fact about the catalogue**, counted by
+ * PostgreSQL when the page renders. There is no revenue, no conversion rate,
+ * no units sold and no trend line, because there is no order system: nothing
+ * in this application knows what has been bought. A dashboard showing a
+ * plausible revenue figure would be the most misleading thing in the
+ * repository, and the temptation to add one should be resisted until orders
+ * exist.
  *
- * The role is checked here as well as in the layout. That is not redundant.
- * A layout and the page beneath it render concurrently, so a layout that
- * throws does not reliably stop the page from producing output, and the page
- * payload can still reach the client. Every admin page must make its own
- * check, and every admin query must be guarded where the data is read.
+ * What is here is what somebody opening the admin area actually needs: how
+ * much of the catalogue is live, what is still a draft, what is about to run
+ * out, and what they were last working on.
+ *
+ * The role is checked here as well as in the layout. That is not redundant: a
+ * layout and the page beneath it render concurrently, so a layout that
+ * redirects does not reliably prevent this page from producing output.
  */
-const upcoming = [
-  {
-    title: "Catalogue",
-    body: "Create and edit products, variants, sizes and imagery, backed by PostgreSQL.",
-  },
-  {
-    title: "Inventory",
-    body: "Stock per variant, low-stock thresholds and restock history.",
-  },
-  {
-    title: "Orders",
-    body: "Order lifecycle, fulfilment status and customer correspondence.",
-  },
-  {
-    title: "Promotions",
-    body: "Coupon rules, validity windows and usage limits.",
-  },
-] as const;
-
 export default async function AdminOverviewPage() {
   await requireAdmin("/admin");
 
+  const [metrics, lowStock, recent] = await Promise.all([
+    getCatalogMetrics(),
+    listLowStockVariants(6),
+    listRecentlyUpdatedProducts(6),
+  ]);
+
   return (
-    <div className="space-y-10">
-      <div className="max-w-2xl">
-        <Badge variant="neutral">Foundation</Badge>
-        <Heading as="h1" level="lg" className="mt-4">
-          Admin overview
-        </Heading>
-        <Text className="mt-4">
-          The admin area is scaffolded and routed. Management screens are added
-          once the database and authentication layers are in place, so there is
-          nothing to administer yet.
-        </Text>
+    <div className="space-y-6">
+      <AdminPageHeader
+        title="Catalogue overview"
+        description="Counts read from the database as this page rendered. There are no sales figures here: no order system exists yet, so nothing in this application knows what has been bought."
+        actions={
+          <ButtonLink href="/admin/products/new" size="sm">
+            Add product
+          </ButtonLink>
+        }
+      />
+
+      <section aria-labelledby="catalogue-metrics">
+        <h2 id="catalogue-metrics" className="sr-only">
+          Catalogue metrics
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricTile
+            label="Products"
+            value={metrics.products.total}
+            detail={`${metrics.products.active} live · ${metrics.products.draft} draft · ${metrics.products.archived} archived`}
+          />
+          <MetricTile
+            label="Collections"
+            value={metrics.categories.total}
+            detail={`${metrics.categories.active} switched on`}
+          />
+          <MetricTile
+            label="Variants"
+            value={metrics.variants.active}
+            detail={`${metrics.variants.total} in total, including withdrawn`}
+          />
+          <MetricTile
+            label="Photographs"
+            value={metrics.images}
+            detail="Across every product"
+          />
+        </div>
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <AdminPanel
+          title="Stock needing attention"
+          description="Live variants at or below their own low-stock threshold. This is visibility only: changing a quantity is done on the product, and stock movements are a later phase."
+          actions={
+            <ButtonLink href="/admin/products?stock=low" variant="link" size="sm">
+              See all
+            </ButtonLink>
+          }
+        >
+          {lowStock.length === 0 ? (
+            <AdminEmptyState
+              title="All stock levels are healthy"
+              description="No live variant is at or below its low-stock threshold. This panel fills up as stock runs down."
+            />
+          ) : (
+            <ul className="divide-y divide-line">
+              {lowStock.map((variant) => (
+                <li
+                  key={variant.id}
+                  className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0"
+                >
+                  <div className="min-w-0">
+                    <Link
+                      href={`/admin/products/${variant.productId}`}
+                      className="font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+                    >
+                      {variant.productName}
+                    </Link>
+                    <p className="font-sans text-xs text-ink-subtle">
+                      {variant.colour} · {variant.size} · {variant.sku}
+                    </p>
+                  </div>
+                  <p className="shrink-0 font-sans text-xs tabular-nums text-ink-muted">
+                    {/* The word carries it; the number is the detail. */}
+                    <span className="font-medium text-ink">
+                      {variant.quantity === 0
+                        ? "Out of stock"
+                        : `${variant.quantity} left`}
+                    </span>
+                    <span className="text-ink-subtle">
+                      {" "}
+                      · threshold {variant.lowStockThreshold}
+                    </span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AdminPanel>
+
+        <AdminPanel
+          title="Recently updated"
+          description="Where you left off."
+          actions={
+            <ButtonLink href="/admin/products" variant="link" size="sm">
+              All products
+            </ButtonLink>
+          }
+        >
+          {recent.length === 0 ? (
+            <AdminEmptyState
+              title="Nothing in the catalogue yet"
+              description="Products you create appear here, most recently changed first."
+              action={
+                <ButtonLink href="/admin/products/new" size="sm">
+                  Add the first product
+                </ButtonLink>
+              }
+            />
+          ) : (
+            <ul className="divide-y divide-line">
+              {recent.map((product) => (
+                <li
+                  key={product.id}
+                  className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0"
+                >
+                  <Link
+                    href={`/admin/products/${product.id}`}
+                    className="min-w-0 font-sans text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-brand"
+                  >
+                    {product.name}
+                  </Link>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <StatusPill status={product.status} />
+                    <span className="font-sans text-xs text-ink-subtle">
+                      {formatAdminDate(product.updatedAt)}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AdminPanel>
       </div>
 
-      <section aria-labelledby="admin-upcoming" className="space-y-5">
-        <h2
-          id="admin-upcoming"
-          className="font-sans text-xs font-medium uppercase tracking-eyebrow text-ink-subtle"
-        >
-          Planned sections
-        </h2>
-
-        <ul className="grid gap-4 sm:grid-cols-2">
-          {upcoming.map((item) => (
-            <li key={item.title}>
-              <Card padding="md" className="h-full">
-                <CardHeader>
-                  <Heading as="h3" level="sm">
-                    {item.title}
-                  </Heading>
-                  <Text size="sm">{item.body}</Text>
-                </CardHeader>
-              </Card>
-            </li>
-          ))}
+      <AdminPanel title="Not in this phase">
+        <ul className="grid gap-2 font-sans text-sm leading-relaxed text-ink-muted sm:grid-cols-2">
+          <li>
+            <span className="font-medium text-ink">Orders and revenue.</span> No
+            order system exists, so no figure here could be real.
+          </li>
+          <li>
+            <span className="font-medium text-ink">Stock movements.</span>{" "}
+            Quantities can be corrected; adjustments, reservations and returns
+            are the inventory phase.
+          </li>
+          <li>
+            <span className="font-medium text-ink">Image uploads.</span>{" "}
+            Photography is managed as URLs on an approved host.
+          </li>
+          <li>
+            <span className="font-medium text-ink">Colours and sizes.</span>{" "}
+            Managed through the seed; variants use the existing palette and size
+            run.
+          </li>
         </ul>
-      </section>
+      </AdminPanel>
     </div>
   );
 }

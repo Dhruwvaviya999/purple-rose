@@ -15,4 +15,30 @@ Rules:
   query directly.
 - Revalidate affected paths or tags after a successful write.
 
-This folder is empty on purpose — Phase 1 has no mutations.
+## What is here
+
+```
+actions/
+├── auth.ts      request a code, verify it, sign out
+└── admin/       catalogue mutations, one module per feature
+    ├── products.ts
+    ├── categories.ts
+    ├── variants.ts
+    └── images.ts
+```
+
+One module per feature rather than one `admin.ts`: every export in a
+`"use server"` file is a callable endpoint, and a single file holding every
+mutation is a file nobody can review.
+
+Two things about the admin actions are worth knowing before adding another:
+
+- **The authorisation check is written out in each action**, first, before any
+  input is read. Not in a wrapper. `pnpm check:admin` reads these modules and
+  fails if an exported action does not call `requireAdminActor()` before it
+  parses, so the rule cannot be forgotten.
+- **Shared helpers live in `lib/admin/action-support.ts`**, not here. A helper
+  exported from a `"use server"` file would be a public endpoint with no
+  authorisation of its own.
+
+See `docs/admin-catalog/README.md`.
