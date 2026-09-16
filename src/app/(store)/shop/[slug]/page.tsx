@@ -30,26 +30,29 @@ import { Heading, Text } from "@/components/ui/typography";
  * the delivery notes and the related rail are all server-rendered and are
  * handed through the provider as children.
  *
- * ## Rendering and caching
+ * ## Rendering
  *
- * Rendered on demand and then cached for an hour, rather than prerendered at
- * build. `generateStaticParams` deliberately returns nothing: building every
- * product page up front would tie each deployment to the size of the
- * catalogue and mean a price change waited for a rebuild. With an empty list
- * and a `revalidate`, the first request for a piece renders it, everyone after
- * that gets the cached page, and an edit is live within the hour. This is the
- * documented way to get incremental regeneration without a build-time
- * dependency on the database.
+ * Rendered per request, like every other page in the storefront.
+ *
+ * Not for want of trying to cache it. A product page is the obvious candidate
+ * for incremental regeneration: the data changes when somebody edits it, not
+ * when somebody looks at it. What rules it out is the header. `AccountMenu` is
+ * a Server Component that reads the session cookie to decide between "Sign in"
+ * and the account panel, it lives in the store layout, and a cached response
+ * cannot contain a personalised header. Marking this route static produced a
+ * `DYNAMIC_SERVER_USAGE` failure on the first real request, which is the
+ * framework saying exactly that.
+ *
+ * Phase 4 recorded the same trade-off for the whole storefront. Caching the
+ * catalogue means separating the personalised part from the cacheable part:
+ * Partial Prerendering or Cache Components, so the header is a dynamic hole in
+ * a prerendered shell, or moving the account control to the client. Either is
+ * its own piece of work, and neither belongs in a phase about the catalogue.
+ *
+ * The cost is bounded and small: four or five queries on indexed columns, with
+ * the product itself fetched once and shared between the metadata and the page.
  */
-export const revalidate = 3600;
-
-/**
- * No slugs are prerendered; every one is rendered on first request instead.
- * `dynamicParams` defaults to true, which is what allows that.
- */
-export function generateStaticParams() {
-  return [];
-}
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata(
   props: PageProps<"/shop/[slug]">,

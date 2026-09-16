@@ -564,45 +564,57 @@ Behaviour signals need behaviour, and none is collected. When orders exist,
 
 ## Rendering and caching
 
-| Route           | Rendering                      | Why                                                                   |
-| --------------- | ------------------------------ | --------------------------------------------------------------------- |
-| `/shop/[slug]`  | On demand, then cached 1 hour  | Where the traffic is. Caching it is what matters                       |
-| `/`             | Per request                    | Three small queries; see below                                         |
-| `/shop`         | Per request                    | Filters are a combinatorial space                                      |
-| `/sitemap.xml`  | Per request                    | Crawled rarely, never stale                                            |
-| `/cart`, `/wishlist` | Per request               | One person's, permanently                                             |
-| `/admin`, `/login` | Per request                 | Unchanged from Phase 3: session-dependent                             |
+**Nothing in the storefront is cached. Every page renders per request.**
 
-### Product pages
+| Route | Rendering |
+| --- | --- |
+| `/`, `/shop`, `/shop/[slug]` | Per request |
+| `/sitemap.xml` | Per request |
+| `/cart`, `/wishlist` | Per request |
+| `/admin`, `/login` | Per request, unchanged from Phase 3 |
+| `/robots.txt` | Static |
 
-`revalidate = 3600`, with `generateStaticParams` returning **an empty array**.
+### Why, and it is not for want of trying
 
-Building every product page up front would tie each deployment to the size of
-the catalogue and make a price change wait for a rebuild. With an empty list
-and a `revalidate`, the first request for a piece renders it, everyone after
-that gets the cached page, and an edit is live within the hour. Returning `[]`
-is the documented way to get incremental regeneration without a build-time
-dependency on the database.
+A product page is the obvious thing to cache: its data changes when somebody
+edits it, not when somebody looks at it. It was built that way first —
+`revalidate = 3600` with `generateStaticParams` returning `[]`, which is the
+documented way to get incremental regeneration without tying the build to the
+database.
 
-### Why the home page is not cached
+It does not work here, and the reason is the header. `AccountMenu` is a Server
+Component that reads the session cookie to choose between "Sign in" and the
+account panel. It lives in the store layout, so it is part of **every**
+storefront page, and a cached response cannot carry a personalised header.
+Marking the product route static passed `next build` — there were no params to
+prerender — and then failed on the first real request with
+`DYNAMIC_SERVER_USAGE`, which is the framework saying exactly that.
 
-Prerendering `/` would be better for a shopper — three queries an hour instead
-of three a visit — but it would mean `next build` could not finish without a
-reachable database. Phase 2 deliberately arranged for the opposite:
-`src/lib/db/client.ts` defers construction precisely so a missing connection
-string is a runtime condition rather than a build failure. A deployment that
-breaks because the database was briefly unreachable during the build is a worse
-trade than three indexed queries, and the pages where caching actually pays —
-the product pages — keep it.
+This is not new. Phase 4 recorded the same trade-off for the whole storefront
+and named Partial Prerendering as the eventual fix. Phase 5 does not change it.
 
-The way to have both is Cache Components (`cacheComponents: true` plus
-`use cache`), which prerenders the shell and fills cached data at runtime. That
-changes how every route renders, including the authenticated ones, so it is its
-own piece of work rather than a side effect of connecting the catalogue.
+**What caching the catalogue actually requires** is separating the personalised
+part from the cacheable part — Partial Prerendering or Cache Components
+(`cacheComponents: true` plus `use cache`), so the header becomes a dynamic hole
+in a prerendered shell — or moving the account control to the client and
+fetching the session from there. Both change how every route in the application
+renders, including the authenticated ones, so either is its own piece of work
+rather than a side effect of connecting the catalogue.
 
 Note that `unstable_cache` is **not** used: Next.js 16 documents it as replaced
 by `use cache`, and reaching for a deprecated API to avoid a documented one is
 the wrong direction.
+
+### What keeps per-request rendering cheap
+
+Every page is a small, fixed number of queries on indexed columns, run in
+parallel, with no N+1 and no full-table read. The counts are in
+[Query counts per page](#query-counts-per-page). A product page fetches the
+product once and shares it between the metadata and the body.
+
+Not prerendering also means `next build` never needs a reachable database,
+which preserves the Phase 2 decision that `src/lib/db/client.ts` documents: a
+missing connection string is a runtime condition, not a build failure.
 
 ### Request-scoped deduplication
 
@@ -684,9 +696,12 @@ chosen from real `EXPLAIN` output rather than guessed at now.
 
 | Page            | Queries                                                                  |
 | --------------- | ------------------------------------------------------------------------ |
-| `/shop`         | 6–7: categories for the chrome, count, page of rows, 3 facet queries, and a category lookup when exactly one is selected |
+| `/shop`         | 6–7: categories for the chrome, count, page of rows, 3 facet queries, and a category lookup when exactly one is selected (deduped with the one `generateMetadata` makes) |
 | `/shop/[slug]`  | 4–5: chrome, the product (deduped across metadata and page), related, and a top-up when the rail is short |
 | `/`             | 4: chrome, category tiles, two rails                                      |
+
+Each also reads the session for the header, which is what Phase 3 added and
+what keeps these pages dynamic.
 
 No N+1 anywhere: variants, images and categories all arrive with their product
 in one query, through `select`, and no loop issues a query.

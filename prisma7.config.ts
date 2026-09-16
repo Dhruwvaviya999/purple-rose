@@ -14,14 +14,30 @@ loadEnvFiles({ path: [".env.local", ".env"], quiet: true });
 import { defineConfig } from "prisma/config";
 
 /**
- * Runtime queries use `DATABASE_URL`, which should be Neon's pooled endpoint.
+ * This file configures the **CLI only**.
  *
- * Schema changes use `DIRECT_URL`, Neon's unpooled endpoint, because the
- * migration engine opens long-lived sessions and issues DDL that a transaction
- * pooler cannot carry. It is optional: when it is absent Prisma falls back to
- * `DATABASE_URL`, which is what a single-endpoint local database wants.
+ * The application never reads it. `src/lib/db/client.ts` builds its own client
+ * from `DATABASE_URL` through the driver adapter, so `datasource.url` here is
+ * the connection that migrations, introspection and Studio use, and nothing
+ * else.
+ *
+ * That is why it prefers `DIRECT_URL`: the migration engine opens long-lived
+ * sessions and issues DDL that a transaction pooler cannot carry. Against
+ * Neon's pooled endpoint it fails with `permission denied for schema pg_toast`.
+ * Runtime queries still go through the pooled `DATABASE_URL`, which is what a
+ * serverless deployment needs.
+ *
+ * `DIRECT_URL` is optional. Without it this falls back to `DATABASE_URL`,
+ * which is correct for a single-endpoint database.
+ *
+ * Note for anyone extending this: Prisma 7's `datasource` block accepts only
+ * `url` and `shadowDatabaseUrl`. There is **no `directUrl` key** — the field of
+ * that name in `schema.prisma` did not survive into the config file, and
+ * passing one here is silently ignored rather than rejected, so every schema
+ * command quietly runs against the pooler.
  */
-const directUrl = process.env.DIRECT_URL?.trim();
+const migrationUrl =
+  process.env.DIRECT_URL?.trim() || process.env.DATABASE_URL?.trim();
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -30,7 +46,6 @@ export default defineConfig({
     seed: "tsx prisma/seed.ts",
   },
   datasource: {
-    url: process.env.DATABASE_URL,
-    ...(directUrl ? { directUrl } : {}),
+    url: migrationUrl,
   },
 });

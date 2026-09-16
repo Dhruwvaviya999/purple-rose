@@ -151,7 +151,7 @@ Three rules hold for the whole project:
 | -------------- | -------------------------------------------------------------- |
 | `/`            | Storefront home: category tiles and two product rails          |
 | `/shop`        | The catalogue: search, filters, sort and paging, all in the URL |
-| `/shop/[slug]` | Product page. Real slugs; rendered on demand, cached for an hour |
+| `/shop/[slug]` | Product page, rendered per request from real slugs             |
 | `/wishlist`    | Wishlist shell. Saving is not implemented                      |
 | `/cart`        | Bag shell. Carts are not implemented                           |
 | `/login`       | Phone plus one-time code sign-in, public                       |

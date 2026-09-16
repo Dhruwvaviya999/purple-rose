@@ -422,13 +422,25 @@ The catalogue behind this interface is verified by `pnpm check:catalog` and
 [docs/catalog/README.md](../catalog/README.md#verification) for what each
 covers.
 
-**The Phase 5 storefront was not re-verified in a browser.** There was no
-database available while it was built, so no page could be rendered with real
-rows, and no responsive or interaction pass was repeated. The Phase 4 results
-below still describe the components, none of which changed in appearance — but
-"the grid looks right with twenty-four real products" is not something anyone
-has looked at. Run the two checks above against a seeded database, then repeat
-the browser pass below, before treating the storefront as verified.
+Every page was then served from a production build against the seeded
+database and its HTML checked: the home rails and category tiles, the listing
+count and all nine filter groups, sixteen filter, price and search
+combinations, a product page's per-colour galleries and per-colour size
+availability, the related rail, the sitemap, and that a draft, an archived
+product and a disabled collection are all 404 or absent rather than merely
+hidden.
+
+Authentication was re-checked against the same database after the catalogue
+landed — `pnpm check:auth` and `pnpm check:auth:db`, 71 assertions covering
+sign-in, roles, lockout, replay, expiry and session revocation — and `/admin`
+still redirects an anonymous request. The catalogue touched no auth file.
+
+**What was still not done is the visual pass.** No page was opened in a real
+browser, so the responsive sweep from 320 to 1920 pixels and the interaction
+assertions below were not repeated with real data. The components did not
+change in appearance, but "the grid looks right with twenty-four real products
+in it" is not something anyone has looked at. Repeat the Phase 4 browser pass
+before treating the storefront as visually verified.
 
 ### Phase 4
 

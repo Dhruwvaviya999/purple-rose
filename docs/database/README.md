@@ -93,23 +93,77 @@ Neon pooled endpoint  ──────────►  PostgreSQL
 
 ### Two URLs, two jobs
 
-| Variable       | Endpoint             | Used by                        | Required |
-| -------------- | -------------------- | ------------------------------ | -------- |
-| `DATABASE_URL` | pooled, `-pooler`    | the application at runtime     | yes      |
-| `DIRECT_URL`   | direct, no `-pooler` | the Prisma CLI, schema changes | no       |
+| Variable       | Endpoint             | Used by                        | Required    |
+| -------------- | -------------------- | ------------------------------ | ----------- |
+| `DATABASE_URL` | pooled, `-pooler`    | the application at runtime     | yes         |
+| `DIRECT_URL`   | direct, no `-pooler` | the Prisma CLI, schema changes | yes on Neon |
 
 Runtime queries go through the pooler because serverless functions open and
 discard connections constantly, and the pooler is what absorbs that.
 
 Schema changes do not go through the pooler. The migration engine holds a
 session open, runs DDL, and may create and drop a shadow database. A
-transaction pooler cannot carry any of that. Point `DIRECT_URL` at Neon's
-direct endpoint and the CLI will use it.
+transaction pooler cannot carry any of that.
 
-`DIRECT_URL` is optional. When it is absent Prisma falls back to
-`DATABASE_URL`, which is the right behaviour for a database with a single
-endpoint. Nothing else is invented: these are the only two connection
-variables, and both are read.
+**On Neon this is not a preference, it is a requirement.** Run `pnpm db:migrate`
+against the pooled endpoint and it fails with:
+
+```
+Error: ERROR: permission denied for schema pg_toast
+```
+
+`DIRECT_URL` is the same connection string with `-pooler` removed from the
+host: same user, same password, same database. It is optional only for a
+database with a single endpoint, where the CLI falls back to `DATABASE_URL`.
+
+### The `directUrl` trap
+
+Prisma 7's config file takes a `datasource` block that accepts **`url` and
+`shadowDatabaseUrl`, and nothing else**. The `directUrl` field that lived in
+`schema.prisma` under Prisma 6 has no equivalent here, and passing one is
+*silently ignored* rather than rejected — so a config that looks like it sends
+migrations to the direct endpoint quietly sends every one of them through the
+pooler.
+
+`prisma7.config.ts` therefore sets `datasource.url` to `DIRECT_URL` and falls
+back to `DATABASE_URL`. That is safe because **the application never reads that
+file**: `src/lib/db/client.ts` builds its own client from `DATABASE_URL`
+through the driver adapter. The config is the CLI's connection and only the
+CLI's.
+
+Check which endpoint a command actually used — the CLI prints it:
+
+```
+Datasource "db": PostgreSQL database "purple-rose", schema "public"
+  at "ep-xxxx.REGION.aws.neon.tech"      ← direct, correct
+  at "ep-xxxx-pooler.REGION.aws.neon.tech"  ← pooled, will fail on DDL
+```
+
+### If a migration is interrupted
+
+The migration engine takes a PostgreSQL advisory lock (`72707369`) for the
+duration. If the CLI dies before releasing it — a failed run, a killed
+terminal — the backend session can outlive it and hold the lock, and every
+later attempt fails with:
+
+```
+Error: P1002 ... Timed out trying to acquire a postgres advisory lock
+```
+
+That is a stuck session, not a slow database. Find and release it:
+
+```sql
+select a.pid, a.state, left(a.query, 60)
+  from pg_locks l
+  join pg_stat_activity a on a.pid = l.pid
+ where l.locktype = 'advisory' and l.objid = 72707369;
+
+select pg_terminate_backend(<pid>);   -- only when state is 'idle'
+```
+
+Terminate only an `idle` holder. A session that is actively running a statement
+is a migration in progress, and killing it mid-DDL is how a schema ends up half
+applied.
 
 ### Why `@prisma/adapter-pg` and not `@prisma/adapter-neon`
 
@@ -379,8 +433,9 @@ All commands are pnpm. Run them from the repository root.
    cp .env.example .env.local
    ```
 
-   Set `DATABASE_URL` to the pooled string. Optionally set `DIRECT_URL` to the
-   direct string, the same host without `-pooler`.
+   Set `DATABASE_URL` to the pooled string, and `DIRECT_URL` to the same
+   string with `-pooler` removed from the host. On Neon both are needed:
+   migrations fail through the pooler.
 
 4. Install dependencies and apply the schema:
 
