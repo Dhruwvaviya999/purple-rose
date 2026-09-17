@@ -197,7 +197,7 @@ Three rules hold for the whole project:
 | `/shop`        | The catalogue: search, filters, sort and paging, all in the URL |
 | `/shop/[slug]` | Product page, rendered per request from real slugs             |
 | `/wishlist`    | Saved pieces. **Signed-in customers only**, never indexed       |
-| `/cart`        | Bag shell. Carts are not implemented                           |
+| `/cart`        | The bag: lines, quantities, subtotal. Never indexed            |
 | `/login`       | Phone plus one-time code sign-in, public                       |
 | `/admin`       | Catalogue dashboard. **ADMIN only**, never indexed             |
 | `/admin/products`      | Product list: search, filter, sort, page               |
@@ -243,7 +243,10 @@ scripts/
 ├── check-attributes.ts       colours and sizes, and what deactivation does
 ├── check-admin-ui.ts         the admin UI in a real browser, at nine widths
 ├── check-wishlist.ts         wishlist data, ownership, archiving, isolation
-└── check-wishlist-ui.ts      the wishlist in a real browser, at nine widths
+├── check-wishlist-ui.ts      the wishlist in a real browser, at nine widths
+├── check-cart.ts             bag data, ownership, merge, database constraints
+├── check-cart-http.ts        bag status codes, cookies and isolation on the wire
+└── check-cart-ui.ts          the bag in a real browser, at nine widths
 
 docs/
 ├── database/README.md        database architecture, decisions and workflows
@@ -252,7 +255,8 @@ docs/
 ├── catalog/README.md         catalogue domain, services, filtering, seeding
 ├── admin-catalog/README.md   admin architecture, authorisation, mutations
 ├── admin-attributes/README.md  colours, sizes, deactivation, browser verification
-└── wishlist/README.md        wishlist ownership, archiving, batch state, caching
+├── wishlist/README.md        wishlist ownership, archiving, batch state, caching
+└── cart/README.md            bag ownership, guest tokens, pricing, the merge
 
 src/
 ├── proxy.ts                  optimistic request guard (Next.js 16 convention)
@@ -263,7 +267,7 @@ src/
 │   │   ├── shop/page.tsx     /shop — listing, filters, sort, paging
 │   │   ├── shop/[slug]/      /shop/<piece> — product page
 │   │   ├── wishlist/         /wishlist — saved pieces, signed-in only
-│   │   └── cart/             /cart — shell
+│   │   └── cart/             /cart — the bag, guest or signed-in
 │   ├── (auth)/               sign-in group: focused, chrome-light
 │   │   ├── layout.tsx
 │   │   └── login/page.tsx    /login
@@ -293,10 +297,12 @@ src/
 ├── features/
 │   ├── auth/                 sign-in form, OTP input, sign-out control
 │   ├── wishlist/             the wishlist action result type and its messages
+│   ├── cart/                 the bag action result type and its messages
 │   └── storefront/           page sections and the URL query contract
 ├── actions/
 │   ├── auth.ts               the only two authentication endpoints
 │   ├── wishlist.ts           add, remove, toggle — the three wishlist endpoints
+│   ├── cart.ts               add, update, remove, clear — the four bag endpoints
 │   └── admin/                catalogue mutations, one module per feature
 │
 ├── generated/prisma/         Prisma Client — generated on install, git-ignored
@@ -306,6 +312,7 @@ src/
 │   ├── admin/                money conversion, admin URL contract, action plumbing
 │   ├── catalog/              filters, row mapping, attribute vocabularies
 │   ├── wishlist/             per-request wishlist state, revalidation plumbing
+│   ├── cart/                 owner resolution, guest tokens, limits, the merge hook
 │   ├── db/client.ts          the single Prisma Client (server-only)
 │   ├── utils/                framework-agnostic helpers
 │   ├── services/             the only layer that queries the database
@@ -668,6 +675,82 @@ nothing until now.
 where the colour and size the wishlist deliberately never captured get asked
 for.
 
+## Phase 9 — shopping bag
+
+The first thing in the application a person can own **without an account**.
+
+Full detail is in [docs/cart/README.md](docs/cart/README.md). The short version:
+
+**A guest gets a real bag.** Not `localStorage` — two tables in PostgreSQL,
+reached through an opaque random token in an HttpOnly cookie whose SHA-256
+digest is all the database stores. It survives a reload, a new tab and a closed
+browser, and it is never a prerequisite for browsing: a visitor who adds nothing
+leaves no row and no cookie behind, because a cookie can only be written from an
+action and reads deliberately never create one.
+
+**Ownership is exactly one of two things, and the database says so.** A
+`CHECK (("userId" IS NULL) <> ("guestTokenHash" IS NULL))` makes a bag owned by
+nobody and a bag owned by two people both impossible, rather than merely
+unintended. No action accepts a `userId`, no function anywhere takes a `cartId`,
+and the browser never receives one.
+
+**A bag holds variants, not products.** The colour and size controls already on
+the product page are resolved to the one `ProductVariant` they name, and that id
+is all the client sends. The server re-checks that the variant exists, is still
+offered, belongs to an ACTIVE product and has stock, then takes the price from
+the catalogue. **No price, name, label or stock figure is accepted from a
+browser, anywhere.**
+
+**Sign-in merges, and cannot lose anything.** Guest `A×2, B×1` plus account
+`A×1, C×3` becomes `A×3, B×1, C×3`, capped by current stock and repriced from
+the catalogue. The guest bag is deleted in the *same transaction* that writes its
+contents, so a failure leaves both sides exactly as they were and the cookie
+still pointing at a bag with everything in it. Running it twice changes nothing.
+`actions/auth.ts` gained one line, not a commerce branch.
+
+**The bag reserves no stock.** Nothing decrements inventory, creates a
+reservation or writes a movement — asserted by reading the service's source and
+again by comparing stock before and after an add. Two shoppers can hold the last
+dress; settling that belongs to the order phase. Asking for seven of five is
+capped to five with "Only 5 available", not refused.
+
+**Prices are reconciled on every read.** Each line stores a snapshot, used for
+exactly one thing: noticing that the catalogue has moved. When it has, the bag
+shows the current price, says so once, and brings the snapshot up to date.
+`compareAtPrice` is never snapshotted, so sale transitions in either direction
+simply show the truth. Money is integer paise throughout; no float touches a
+total.
+
+**Nothing is silently removed.** A piece archived while it sits in a bag stays
+there, marked "Currently unavailable", out of the subtotal and out of the badge,
+with its photograph and name intact — and becomes ordinary again by itself if it
+is republished or restocked.
+
+**Product cards do not guess.** A card has no size control, so it offers a direct
+add only when the piece has exactly one purchasable combination, and otherwise a
+"Choose size" link to the product page. That answers the wishlist's "move to bag"
+too, since wishlist cards are the same component.
+
+**One cart query per request.** The layout reads the bag once, request-scoped, and
+the header badge, the drawer and `/cart` all share it — `/cart` issues none of
+its own. An anonymous visitor with no cookie costs nothing at all.
+
+**Three new suites.** `pnpm check:cart` covers the data, the merge, the catalogue
+interaction and the CHECK constraints, and reads the action module as source to
+assert the endpoint shape. `pnpm check:cart:http` checks what reaches the wire:
+status codes, cookie flags, and two cookie jars never seeing each other's pieces.
+`pnpm check:cart:ui` drives headless Chromium at nine widths.
+
+**It found one real defect**, fixed: the "Remove" control on a bag line was 20px
+tall, below the 24px minimum for a reliable tap target, at every width. The same
+class of defect the Phase 7 browser pass found in the admin area, and the same
+reason it was invisible without measuring a rendered box.
+
+**Checkout is a placeholder and says so.** No address, no payment SDK, no order.
+
+**Still to come:** checkout, orders and payments — and the stock commitment that
+the bag deliberately does not attempt.
+
 ## What is not built yet
 
 Deliberately absent, each arriving in the phase that needs it:
@@ -684,13 +767,14 @@ Deliberately absent, each arriving in the phase that needs it:
 - **Real product photography.** Development placeholders come from Unsplash,
   declared in `prisma/catalog/data.ts` and `src/config/media.ts`. No component
   contains a URL
-- **Bag persistence.** The bag has its UI and says it is not connected. The
-  wishlist is real as of Phase 8
+- **Checkout, orders and payments.** The bag is real as of Phase 9 and says
+  plainly that checkout opens later; no address is collected and no payment SDK
+  is installed
 - **Newsletter sending.** The form is built and disabled
 - **Sales analytics.** There are no orders, so nothing knows what has sold.
   `bestSeller` is a merchandising flag an operator sets, and is never presented
   as a ranking
-- Cart, checkout, orders, payments
+- Checkout, orders, payments
 - Coupons, reviews, shipping and email providers
 - Image upload and media storage
 - Dark theme
@@ -710,8 +794,8 @@ The database models for all of the above are also absent on purpose. See
 | 6     | Admin console: catalogue management — **done**                |
 | 7     | Admin attributes, and real browser verification — **done**    |
 | 8     | Customer wishlist, persisted per account — **done**           |
-| 9     | Bag persistence and cart, against `ProductVariant`            |
-| 10    | Checkout, payments and orders                                |
+| 9     | Shopping bag, guest and account, against `ProductVariant` — **done** |
+| 10    | Checkout, payments and orders                                 |
 | 11    | Inventory workflows, coupons, reviews, image uploads          |
 
 Each phase adds the database models its feature needs, through a migration.

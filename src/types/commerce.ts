@@ -51,6 +51,30 @@ export type ProductSize = {
   available: boolean;
 };
 
+/**
+ * One sellable combination, as the interface refers to it.
+ *
+ * Added in Phase 9. Colour and size are what a shopper picks; a variant id is
+ * what a bag holds. This is the translation between the two, and it exists so
+ * the browser can name the exact row it means rather than sending two labels
+ * and hoping the server matches them the same way.
+ *
+ * The id is not authority. The server re-resolves the variant, re-checks that
+ * it belongs to an ACTIVE product, is still offered and has stock, and takes
+ * the price from the catalogue — see `docs/cart/README.md`. This only saves the
+ * server from guessing which combination "Pink, M" meant.
+ */
+export type ProductVariantOption = {
+  id: string;
+  sku: string;
+  /** Matches `ProductColour.slug`. */
+  colourSlug: string;
+  /** Matches `ProductSize.value`. */
+  sizeValue: string;
+  /** Currently in stock. Presentation only; the server checks again. */
+  available: boolean;
+};
+
 /** Everything a product card renders, and nothing more. */
 export type ProductCardData = {
   id: string;
@@ -68,6 +92,17 @@ export type ProductCardData = {
   inStock: boolean;
   /** Preview swatches. Selection happens on the product page. */
   colours: readonly ProductColour[];
+  /**
+   * The variant to add when a card's quick-add is pressed.
+   *
+   * Set only when the piece is made in exactly one combination that is
+   * currently offered and in stock — a single colour in a single size, or a
+   * one-size garment. In every other case it is undefined and the card links to
+   * the product page instead, because a card has no colour or size control and
+   * guessing one from whatever the sort happened to put first is how a shopper
+   * receives the wrong garment. See `docs/cart/README.md`.
+   */
+  soleVariantId?: string;
 };
 
 /**
@@ -105,6 +140,11 @@ export type ProductDetailData = ProductCardData & {
   sizes: readonly ProductSize[];
   /** Per-colour photographs and size availability. */
   colourOptions: readonly ProductColourOption[];
+  /**
+   * Every combination the piece is made in, so a chosen colour and size can be
+   * turned into the one variant they name.
+   */
+  variants: readonly ProductVariantOption[];
   /** Product-level identity, shown in the details and in product metadata. */
   articleNumber: string;
   /**

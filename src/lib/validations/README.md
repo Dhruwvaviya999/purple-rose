@@ -18,6 +18,7 @@ Rules:
 | `auth.ts`             | Phone input, one-time codes, the sign-in return path   |
 | `catalog-admin.ts`    | Every admin catalogue mutation                         |
 | `wishlist.ts`         | The one input a wishlist mutation takes: a product id  |
+| `cart.ts`             | A variant or a line, and a quantity. No money at all    |
 
 `wishlist.ts` is worth reading as an example of the rule above about boundaries.
 It has a single field. There is no `userId` and no `wishlistId`, because who is

@@ -7,6 +7,7 @@ import type {
   ProductColourOption,
   ProductDetailData,
   ProductSize,
+  ProductVariantOption,
   StorefrontImage,
 } from "@/types/commerce";
 import type { Prisma } from "@/generated/prisma/client";
@@ -52,6 +53,10 @@ export const productCardSelect = {
     where: { isActive: true },
     orderBy: [{ color: { position: "asc" } }, { size: { position: "asc" } }],
     select: {
+      // The id is here for one reason: a card with exactly one purchasable
+      // variant can add straight to the bag, and it needs to name it. It costs
+      // nothing — the rows were already being read for the colour swatches.
+      id: true,
       color: { select: { slug: true, name: true, hex: true } },
       inventory: { select: { quantity: true } },
     },
@@ -99,6 +104,7 @@ export const productDetailSelect = {
     where: { isActive: true },
     orderBy: [{ color: { position: "asc" } }, { size: { position: "asc" } }],
     select: {
+      id: true,
       sku: true,
       colorId: true,
       color: { select: { slug: true, name: true, hex: true } },
@@ -186,9 +192,31 @@ function badgesFor(row: {
 }
 
 type ColourVariantRow = {
+  id: string;
   color: { slug: string; name: string; hex: string };
   inventory: { quantity: number } | null;
 };
+
+/**
+ * The one variant a card may add directly, or undefined.
+ *
+ * "Exactly one purchasable combination" means precisely that: one active
+ * variant row, with stock. A piece cut in two sizes has no single answer even
+ * if only one of them is in stock today, because tomorrow the other is back and
+ * the card would silently start meaning something else. So the test is on the
+ * shape of the product, not on today's inventory alone.
+ */
+function soleVariantFrom(
+  variants: readonly ColourVariantRow[],
+): string | undefined {
+  if (variants.length !== 1) {
+    return undefined;
+  }
+
+  const only = variants[0]!;
+
+  return (only.inventory?.quantity ?? 0) > 0 ? only.id : undefined;
+}
 
 /**
  * The distinct colours a product comes in, in the order the variants arrived.
@@ -239,6 +267,7 @@ export function toProductCardData(row: ProductCardRow): ProductCardData {
       (variant) => (variant.inventory?.quantity ?? 0) > 0,
     ),
     colours: coloursFrom(row.variants),
+    soleVariantId: soleVariantFrom(row.variants),
   };
 }
 
@@ -316,6 +345,16 @@ export function toProductDetailData(row: ProductDetailRow): ProductDetailData {
     };
   });
 
+  // Colour and size, as a shopper picks them, paired with the variant they
+  // actually name. The bag holds variants; the controls speak in labels.
+  const variants: ProductVariantOption[] = row.variants.map((variant) => ({
+    id: variant.id,
+    sku: variant.sku,
+    colourSlug: variant.color.slug,
+    sizeValue: variant.size.code,
+    available: (variant.inventory?.quantity ?? 0) > 0,
+  }));
+
   const card = toProductCardData({
     id: row.id,
     slug: row.slug,
@@ -340,6 +379,7 @@ export function toProductDetailData(row: ProductDetailRow): ProductDetailData {
     details: detailLines(row),
     sizes: sizesFor(null),
     colourOptions,
+    variants,
     articleNumber: row.articleNumber,
     seoTitle: row.seoTitle,
     seoDescription: row.seoDescription,

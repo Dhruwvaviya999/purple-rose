@@ -387,8 +387,12 @@ costs nothing and unblocks the next phase.
 `Wishlist` and `WishlistItem` arrived in Phase 8 and are modelled; see
 [docs/wishlist/README.md](../wishlist/README.md).
 
-Still not modelled: `Cart`, `CartItem`, `Order`, `OrderItem`, `Address`,
-`Payment`, `Shipment`, `Coupon`, `Review`, and any inventory ledger.
+`Cart` and `CartItem` arrived in Phase 9, with CHECK constraints that make a bag
+owned by nobody — or by two people — impossible; see
+[docs/cart/README.md](../cart/README.md).
+
+Still not modelled: `Order`, `OrderItem`, `Address`, `Payment`, `Shipment`,
+`Coupon`, `Review`, and any inventory ledger.
 
 This is a decision, not an omission. A twenty-table ecommerce schema written
 before those features exist would be guessing at the questions that actually

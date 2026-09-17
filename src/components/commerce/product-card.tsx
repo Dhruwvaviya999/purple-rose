@@ -5,6 +5,7 @@ import type { Route } from "next";
 import type { ProductCardData } from "@/types/commerce";
 import { cn } from "@/lib/utils/cn";
 import { Price } from "./price";
+import { CardQuickAdd } from "./card-quick-add";
 import { ProductBadge, pickPrimaryBadge } from "./product-badge";
 import { WishlistButton } from "./wishlist-button";
 
@@ -21,8 +22,9 @@ import { WishlistButton } from "./wishlist-button";
  *
  * The whole card is one link, with the image and the name inside it, so the tap
  * target on a phone is the card rather than a line of text. The wishlist
- * control sits outside that link, because a button nested in an anchor is not
- * valid and behaves unpredictably.
+ * control and the quick-add sit outside that link, because a button nested in
+ * an anchor is not valid and behaves unpredictably, and both carry `z-10` so
+ * the stretched link below does not swallow their clicks.
  */
 type ProductCardProps = {
   product: ProductCardData;
@@ -143,6 +145,11 @@ export function ProductCard({
           size="sm"
           className="absolute right-3 top-3 z-10"
         />
+
+        {/* Phase 9. It decides for itself whether it can add directly or has
+            to send the shopper to the size controls; see the component. A
+            withdrawn card offers nothing. */}
+        {unavailable ? null : <CardQuickAdd product={product} />}
       </div>
 
       <div className="mt-3.5 flex flex-col gap-1.5">

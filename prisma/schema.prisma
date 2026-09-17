@@ -51,6 +51,8 @@ model User {
   sessions Session[]
   /// At most one, created lazily the first time something is saved.
   wishlist Wishlist?
+  /// At most one, created lazily the first time something is added to a bag.
+  cart     Cart?
 }
 
 /// A one-time code issued to a phone number, awaiting verification.
@@ -484,6 +486,7 @@ model ProductVariant {
   size    Size    @relation(fields: [sizeId], references: [id], onDelete: Restrict)
 
   inventory Inventory?
+  cartItems CartItem[]
 
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
@@ -674,4 +677,115 @@ model WishlistItem {
   /// Serves the foreign key check when a product is deleted, and answers
   /// "how many people saved this" for a later merchandising screen.
   @@index([productId])
+}
+
+// ---------------------------------------------------------------------------
+// Bag
+//
+// Added in Phase 9. See docs/cart/README.md for the reasoning; the short
+// version is next to each model below.
+//
+// The bag is the first thing in this schema a person can own **without an
+// account**. That single fact is what shapes both models: ownership is either
+// a user or an opaque guest token, never both and never neither, and the
+// database says so rather than the application remembering to.
+// ---------------------------------------------------------------------------
+
+/// One shopper's bag.
+///
+/// Owned by exactly one of two things, and the CHECK constraint in
+/// 20260918120000_add_cart is what makes "exactly" true:
+///
+/// - `userId`, for somebody signed in. Unique, so an account has one bag, and
+///   that bag follows them onto any device they sign in on.
+/// - `guestTokenHash`, for somebody who has not signed in. Unique, so two
+///   browsers are two bags.
+///
+/// Both null would be a bag nobody can reach; both set would be a bag with two
+/// claimants and an ambiguous merge. Neither is allowed.
+///
+/// **The browser never holds this row's id.** A guest holds an opaque random
+/// token in an HttpOnly cookie and the database stores only its SHA-256
+/// digest, so reading this table does not yield a usable bag key, and a stolen
+/// cart id is worth nothing because nothing accepts one.
+model Cart {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// Set for a signed-in shopper. Unique: one bag per account.
+  userId String? @unique @db.Uuid
+  /// Deleting an account takes its bag with it, as it does sessions.
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Hex SHA-256 of the opaque guest cookie value. A plain digest is enough,
+  /// as it is for sessions: the token carries 256 bits of entropy and cannot
+  /// be brute forced from its hash.
+  guestTokenHash String? @unique @db.VarChar(64)
+
+  /// When a guest bag stops being reachable. Null for an account bag, which
+  /// lives as long as the account does. A guest bag that nobody comes back to
+  /// is litter, so it is given an end date at creation; sweeping the expired
+  /// ones is a job for a scheduled task that does not exist yet, and
+  /// `deleteExpiredGuestCarts` is the function it will call.
+  expiresAt DateTime? @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  /// Touched when the contents change, so "when did this bag last move" does
+  /// not need a scan of its lines.
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  items CartItem[]
+
+  /// Serves the expiry sweep. No index on `userId` or `guestTokenHash`: the
+  /// unique constraints above already create one each, and every lookup this
+  /// table has goes through exactly those two columns.
+  @@index([expiresAt])
+}
+
+/// One line in a bag: this variant, this many.
+///
+/// **Keyed on `ProductVariant`, not on Product.** A bag holds "the plum dress
+/// in M", which is a thing with its own SKU and its own stock. Keying on the
+/// product would make two sizes of the same dress one line and lose the only
+/// fact an order needs.
+///
+/// `@@unique([cartId, variantId])` is what makes "add the same thing twice"
+/// increase a quantity instead of creating a second line, whatever order the
+/// requests arrive in.
+model CartItem {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  cartId String @db.Uuid
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  variantId String         @db.Uuid
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  /// How many. At least one — a line with none of something is a removal that
+  /// did not finish. The database floor is 1 and its ceiling is a sanity
+  /// figure; the real per-line maximum is business policy and lives in
+  /// `lib/cart/config.ts`, so changing it is not a migration.
+  quantity Int
+
+  /// What one of these cost, in paise, when the line was last written.
+  ///
+  /// **Not an order price and not a promise.** It exists for exactly one
+  /// purpose: so the application can notice that the catalogue price has moved
+  /// since the shopper put this in their bag, refresh to the current price and
+  /// say so. Totals are always computed from the current catalogue, never from
+  /// anything the browser sent. The price a shopper is actually charged is
+  /// fixed by an order, which does not exist yet.
+  ///
+  /// Nothing else is copied here: no name, no image, no colour, no size. Those
+  /// are reachable through `variant` and would only drift.
+  unitPrice Int
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  /// One line per variant per bag. This is what a double click, a second tab
+  /// and a repeated merge all run into.
+  @@unique([cartId, variantId])
+  /// Serves the foreign key check when a variant is deleted, and answers "how
+  /// many bags is this sitting in" for a later merchandising screen.
+  @@index([variantId])
 }

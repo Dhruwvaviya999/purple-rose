@@ -21,6 +21,7 @@ Rules:
 actions/
 ├── auth.ts      request a code, verify it, sign out
 ├── wishlist.ts  add, remove, toggle — the customer's saved pieces
+├── cart.ts      add, update, remove, clear — the shopper's bag
 └── admin/       catalogue mutations, one module per feature
     ├── products.ts
     ├── categories.ts

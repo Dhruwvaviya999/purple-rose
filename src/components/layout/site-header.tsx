@@ -1,3 +1,4 @@
+import type { CartData } from "@/types/cart";
 import type { StorefrontCategory } from "@/types/commerce";
 import { Container } from "@/components/ui/container";
 import { AnnouncementBar } from "./announcement-bar";
@@ -28,8 +29,12 @@ import { MobileNav } from "./mobile-nav";
  */
 export function SiteHeader({
   categories,
+  cart,
 }: {
   categories: readonly Pick<StorefrontCategory, "slug" | "name">[];
+  /** Read once per request by the store layout and passed down, so no
+   *  component in here queries anything. Same rule as `categories`. */
+  cart: CartData;
 }) {
   return (
     <>
@@ -49,7 +54,7 @@ export function SiteHeader({
           </div>
 
           <div className="ml-auto flex items-center">
-            <HeaderActions searchSuggestions={categories} />
+            <HeaderActions searchSuggestions={categories} cart={cart} />
           </div>
         </Container>
       </header>

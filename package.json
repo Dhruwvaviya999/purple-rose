@@ -23,7 +23,10 @@
     "check:admin:http": "tsx --conditions=react-server scripts/check-admin-http.ts",
     "check:ui": "tsx --conditions=react-server scripts/check-admin-ui.ts",
     "check:wishlist": "tsx --conditions=react-server scripts/check-wishlist.ts",
-    "check:wishlist:ui": "tsx --conditions=react-server scripts/check-wishlist-ui.ts"
+    "check:wishlist:ui": "tsx --conditions=react-server scripts/check-wishlist-ui.ts",
+    "check:cart": "tsx --conditions=react-server scripts/check-cart.ts",
+    "check:cart:http": "tsx --conditions=react-server scripts/check-cart-http.ts",
+    "check:cart:ui": "tsx --conditions=react-server scripts/check-cart-ui.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

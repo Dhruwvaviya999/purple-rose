@@ -11,6 +11,8 @@ import {
   safeRedirectPath,
 } from "@/lib/auth/redirect";
 import { endSession, startSession } from "@/lib/auth/session";
+import { adoptGuestCart } from "@/lib/cart/sign-in";
+import { peekGuestToken } from "@/lib/cart/owner";
 import {
   issueOtpChallenge,
   verifyOtpChallenge,
@@ -158,10 +160,18 @@ async function handleVerify(
       return fail(verified.code);
     }
 
+    // Read before the session changes anything, and used after it. A bag put
+    // together while signed out belongs to the person who assembled it.
+    const guestToken = await peekGuestToken();
+
     // The role comes from the database record, never from the request, so a
     // public sign-in cannot mint an administrator.
     const user = await findOrCreateUserByPhone(verified.phoneNumber);
     await startSession(user.id);
+
+    // One line, and everything it means lives in `lib/cart/sign-in.ts`. It
+    // cannot fail the sign-in and it cannot lose a bag; see that file.
+    await adoptGuestCart(user.id, guestToken);
 
     destination =
       safeRedirectPath(parsed.data.next) ?? defaultDestinationForRole(user.role);
@@ -207,6 +217,15 @@ export async function loginAction(
  * Sign out: revoke the session record, clear the cookie, land on the
  * storefront. Revoking server-side is what makes this real. Clearing the
  * cookie alone would leave a token that still worked if it had been captured.
+ *
+ * **The bag is deliberately untouched.** The account's bag stays in the
+ * database, tied to the account, and is unreachable from this browser the
+ * moment the session is revoked — reaching it needs a session, and there is no
+ * longer one. The browser is left with whatever guest identity it has, which in
+ * the ordinary case is none, because a successful sign-in cleared the guest
+ * cookie as it merged. In the rare case where that merge failed, the cookie is
+ * still there and still names the guest bag it always did, so signing out
+ * cannot be a way to lose one either. See `docs/cart/README.md`.
  */
 export async function logoutAction(): Promise<void> {
   await endSession();

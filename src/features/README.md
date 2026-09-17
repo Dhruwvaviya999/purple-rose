@@ -44,5 +44,7 @@ rather than beside the actions because a `"use server"` file may only export
 async functions, and here rather than in `types/` because the messages are
 feature behaviour, not a shared shape.
 
-Planned: `cart`, `checkout`, `orders`, `account`, `reviews`, `coupons`,
+`cart/` holds `cart-state.ts`, the same shape for the bag's Server Actions.
+
+Planned: `checkout`, `orders`, `account`, `reviews`, `coupons`,
 `admin-catalog`, `admin-inventory`.

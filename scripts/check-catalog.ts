@@ -269,11 +269,13 @@ function variant(
   quantity: number,
 ) {
   return {
+    // Phase 9: a variant row now carries its id, because a bag line names one.
+    id: `variant-${slug}-${size}`,
     sku: `SKU-${slug}-${size}`,
     colorId: colourId,
     color: { slug, name, hex },
     size: { code: size },
-    inventory: { quantity },
+    inventory: { quantity } as { quantity: number } | null,
   };
 }
 
@@ -377,6 +379,7 @@ const soldOut = toProductCardData({
   ...detailRow,
   images: detailRow.images.slice(0, 2),
   variants: detailRow.variants.map((entry) => ({
+    id: entry.id,
     color: entry.color,
     inventory: { quantity: 0 },
   })),
@@ -402,6 +405,7 @@ const noImages = toProductCardData({
   ...detailRow,
   images: [],
   variants: detailRow.variants.map((entry) => ({
+    id: entry.id,
     color: entry.color,
     inventory: entry.inventory,
   })),

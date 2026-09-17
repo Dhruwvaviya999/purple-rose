@@ -1,4 +1,5 @@
 import { CartDrawer } from "@/components/commerce/cart-drawer";
+import type { CartData } from "@/types/cart";
 import {
   SearchOverlay,
   type SearchSuggestion,
@@ -14,9 +15,11 @@ import { WishlistLink } from "./wishlist-link";
  * feature behind a control is not built, the control says so rather than doing
  * nothing quietly: none of them is a dead button.
  *
- * The wishlist is the one that is now fully real. `WishlistLink` reads the
+ * The wishlist and the bag are both fully real now. `WishlistLink` reads the
  * signed-in customer's saved count on the server; see that file for why it
- * costs nothing for an anonymous visitor.
+ * costs nothing for an anonymous visitor. The bag arrives as a prop, read once
+ * per request by the store layout, so the drawer opens with its contents
+ * already there and no page pays for the same query twice.
  *
  * Every one is at least 40 pixels square, which is a comfortable thumb target
  * on a phone, and each carries a text name for screen readers because they are
@@ -27,8 +30,10 @@ import { WishlistLink } from "./wishlist-link";
  */
 export function HeaderActions({
   searchSuggestions,
+  cart,
 }: {
   searchSuggestions: readonly SearchSuggestion[];
+  cart: CartData;
 }) {
   return (
     <div className="flex items-center gap-0.5 sm:gap-1">
@@ -38,7 +43,7 @@ export function HeaderActions({
 
       <AccountMenu />
 
-      <CartDrawer />
+      <CartDrawer cart={cart} />
     </div>
   );
 }

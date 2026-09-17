@@ -1,8 +1,8 @@
 "use client";
 
 import type { ProductDetailData } from "@/types/commerce";
-import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/typography";
+import { AddToBagButton } from "./add-to-bag-button";
 import { ColourSelector } from "./colour-selector";
 import { SizeSelector } from "./size-selector";
 import { useProductVariantSelection } from "./product-variant-selection";
@@ -22,10 +22,15 @@ import { WishlistButton } from "./wishlist-button";
  * to L in plum offers exactly that and strikes through the rest. The database
  * decides; this only renders the answer.
  *
- * Adding to a bag has nowhere to go yet: there is no cart table and no action.
- * So the button says what it is waiting for instead of appearing to work.
- * Everything around it, including the requirement to choose a size first, is
- * the real behaviour and stays when checkout arrives.
+ * **Adding to a bag is real as of Phase 9.** The colour and size chosen above
+ * are turned into the one `ProductVariant` they name, and that id — and nothing
+ * else — is what goes to the server. No price, no labels, no stock figure: the
+ * server re-resolves the variant, checks it is still offered and in stock, and
+ * takes the price from the catalogue. The lookup here only saves it from having
+ * to guess which combination "Plum, M" meant.
+ *
+ * Until a size is chosen there is no variant, so the button says so rather than
+ * disappearing or guessing one.
  *
  * **Saving, by contrast, is real.** The heart beside it writes to the database
  * through `WishlistButton`, which owns the whole of that behaviour — this panel
@@ -52,6 +57,16 @@ export function ProductPurchasePanel({
   const selectedColour = product.colours.find((entry) => entry.slug === colour);
   const hasSizes = sizes.length > 0;
   const anySizeAvailable = sizes.some((entry) => entry.available);
+
+  // The one combination the two controls currently name. Null until both are
+  // chosen, and null for a combination the product is not cut in — which the
+  // size row already prevents, but this does not rely on it.
+  const selectedVariant =
+    colour !== null && size !== null
+      ? product.variants.find(
+          (entry) => entry.colourSlug === colour && entry.sizeValue === size,
+        )
+      : undefined;
 
   return (
     <div className="space-y-7">
@@ -109,18 +124,16 @@ export function ProductPurchasePanel({
         </div>
       ) : null}
 
-      {/* Wrapping, because the wishlist control puts its outcome message on a
-          line of its own inside this row rather than in a box around itself. */}
+      {/* Wrapping, because both controls put their outcome message on a line of
+          their own inside this row rather than in a box around themselves. */}
       <div className="flex flex-wrap items-start gap-3">
-        <Button
-          size="lg"
-          className="flex-1"
-          aria-disabled="true"
-          title="Adding to a bag opens with checkout"
-          aria-describedby={`purchase-note-${product.id}`}
-        >
-          {product.inStock ? "Add to bag" : "Sold out"}
-        </Button>
+        <AddToBagButton
+          variantId={selectedVariant?.id ?? null}
+          productName={product.name}
+          soldOut={!product.inStock}
+          incompleteLabel={hasSizes ? "Select a size" : "Select an option"}
+          className="min-w-40 flex-1"
+        />
 
         <WishlistButton
           productId={product.id}
@@ -136,8 +149,9 @@ export function ProductPurchasePanel({
         id={`purchase-note-${product.id}`}
         className="rounded-control border border-line bg-surface px-4 py-3 font-sans text-sm leading-relaxed text-ink-muted"
       >
-        Ordering opens with checkout. Choosing a colour and size works now so
-        the flow can be checked, but nothing is added or reserved.
+        Adding to your bag works now and your bag is kept, signed in or not.
+        Checkout and payment open in a later release, and nothing is reserved
+        until an order is placed.
       </p>
     </div>
   );
