@@ -16,6 +16,9 @@ const BADGES: Record<
   bestseller: { label: "Bestseller", className: "bg-canvas text-ink" },
   featured: { label: "Featured", className: "bg-canvas text-ink" },
   "sold-out": { label: "Sold out", className: "bg-ink-900 text-canvas" },
+  // Quieter than "Sold out", because it is a different statement: the piece is
+  // not temporarily out of stock, it is not currently offered at all.
+  unavailable: { label: "Unavailable", className: "bg-ink-700 text-canvas" },
 };
 
 /**
@@ -23,6 +26,9 @@ const BADGES: Record<
  * Availability first, because it changes whether the card is worth tapping.
  */
 const PRIORITY: readonly ProductBadgeKind[] = [
+  // "unavailable" is never chosen here: it is not derived from product data,
+  // it is the wishlist telling the card that this entry has been withdrawn, so
+  // the card sets it directly and never asks.
   "sold-out",
   "sale",
   "new",

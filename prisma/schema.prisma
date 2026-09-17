@@ -49,6 +49,8 @@ model User {
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   sessions Session[]
+  /// At most one, created lazily the first time something is saved.
+  wishlist Wishlist?
 }
 
 /// A one-time code issued to a phone number, awaiting verification.
@@ -333,9 +335,10 @@ model Product {
   primaryCategoryId String   @db.Uuid
   primaryCategory   Category @relation("PrimaryCategory", fields: [primaryCategoryId], references: [id], onDelete: Restrict)
 
-  categories ProductCategory[]
-  variants   ProductVariant[]
-  images     ProductImage[]
+  categories    ProductCategory[]
+  variants      ProductVariant[]
+  images        ProductImage[]
+  wishlistItems WishlistItem[]
 
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
@@ -580,4 +583,95 @@ model ProductImage {
   @@index([productId, colorId, position])
   /// Serves the foreign key check when a colour is retired.
   @@index([colorId])
+}
+
+// ---------------------------------------------------------------------------
+// Wishlist
+//
+// Added in Phase 8. See docs/wishlist/README.md for the reasoning; the short
+// version is next to each model below.
+//
+// The wishlist is the first customer-owned persistent domain in the schema.
+// Ownership is the whole of its security model: a wishlist is reached from the
+// authenticated user, never from an id the browser supplied.
+// ---------------------------------------------------------------------------
+
+/// One customer's saved pieces.
+///
+/// Exactly one per user, enforced by `userId @unique` rather than by the
+/// application remembering to look first. Two requests from a customer with no
+/// wishlist yet — two tabs, two devices, a double click — can both find
+/// nothing and both try to create one; the unique index is what decides which
+/// of them wins, and the loser re-reads the row the winner made.
+///
+/// A row of its own rather than a `wishlistItems` relation hanging straight
+/// off `User`, because the list is a thing with a lifetime: it is created the
+/// first time something is saved, it has its own `updatedAt`, and a later
+/// phase that wants named lists widens this model instead of rebuilding the
+/// items.
+model Wishlist {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// Unique: the constraint *is* the "one wishlist per customer" rule.
+  userId String @unique @db.Uuid
+  /// Deleting an account takes the wishlist with it, as it does sessions.
+  /// Nothing here outlives the person it belongs to.
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  /// Touched when an item is added or removed, so the list can report when it
+  /// last changed without counting rows.
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  items WishlistItem[]
+
+  // No @@index([userId]): the unique constraint above already creates one, and
+  // a second index on the same column would be dead weight on every write.
+}
+
+/// One product saved to one wishlist.
+///
+/// **Product-level, not variant-level.** Saving is "I like this piece", not "I
+/// want this piece in plum, size M" — a shopper's size is usually a decision
+/// they make at the point of buying, and a variant-keyed wishlist would show
+/// the same dress three times and would go stale the moment a colour is
+/// retired. Choosing a variant is Cart's job, against `ProductVariant`.
+///
+/// **Nothing is snapshotted.** No price, no name, no image column: the row is
+/// a reference, so the wishlist always shows what the product costs and is
+/// called *now*. Price snapshots belong to an order line, which records what
+/// was actually agreed; a wishlist records intent, and intent is about the
+/// piece rather than about last week's price.
+model WishlistItem {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  wishlistId String   @db.Uuid
+  wishlist   Wishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+
+  productId String  @db.Uuid
+  /// Cascade, matching every other child of Product: memberships, variants
+  /// and images all go when a product row does. The catalogue archives rather
+  /// than deletes, so in practice this never fires — an archived product keeps
+  /// its wishlist rows and is shown as unavailable. It exists so that a hard
+  /// delete, wherever one is ever added, cannot leave an item pointing at
+  /// nothing.
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  /// What the list is ordered by: newest saved first. Deliberately not the
+  /// product's own dates, which would reshuffle a customer's list whenever an
+  /// admin edited something.
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  // No updatedAt: an item has no mutable columns. Re-saving a product that is
+  // already saved is a no-op, not an update, so there would never be a second
+  // value to record.
+
+  /// The important one. Without it a double click, two tabs or a retried
+  /// request puts the same dress in the list twice. It also serves every read
+  /// this table has — "this customer's items" and "is this product saved" both
+  /// start from `wishlistId` — so there is no separate index on that column.
+  @@unique([wishlistId, productId])
+  /// Serves the foreign key check when a product is deleted, and answers
+  /// "how many people saved this" for a later merchandising screen.
+  @@index([productId])
 }

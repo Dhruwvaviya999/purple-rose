@@ -26,8 +26,26 @@ import { WishlistButton } from "./wishlist-button";
  * So the button says what it is waiting for instead of appearing to work.
  * Everything around it, including the requirement to choose a size first, is
  * the real behaviour and stays when checkout arrives.
+ *
+ * **Saving, by contrast, is real.** The heart beside it writes to the database
+ * through `WishlistButton`, which owns the whole of that behaviour — this panel
+ * only hands it the product, the state the page read, and where to return to
+ * after signing in. Deliberately no second copy of the toggle logic here: the
+ * card on the shop grid and the control on this page are the same component,
+ * so they cannot disagree about what a heart means.
+ *
+ * The wishlist is product-level, so the colour and size chosen above have
+ * nothing to do with it. A shopper saves the piece; choosing "plum, M" is a
+ * decision Cart will ask for against `ProductVariant`.
  */
-export function ProductPurchasePanel({ product }: { product: ProductDetailData }) {
+export function ProductPurchasePanel({
+  product,
+  wishlisted,
+}: {
+  product: ProductDetailData;
+  /** Whether the signed-in customer saved this. `null` when signed out. */
+  wishlisted: boolean | null;
+}) {
   const { colour, setColour, size, setSize, sizes } =
     useProductVariantSelection();
 
@@ -91,7 +109,9 @@ export function ProductPurchasePanel({ product }: { product: ProductDetailData }
         </div>
       ) : null}
 
-      <div className="flex gap-3">
+      {/* Wrapping, because the wishlist control puts its outcome message on a
+          line of its own inside this row rather than in a box around itself. */}
+      <div className="flex flex-wrap items-start gap-3">
         <Button
           size="lg"
           className="flex-1"
@@ -103,8 +123,12 @@ export function ProductPurchasePanel({ product }: { product: ProductDetailData }
         </Button>
 
         <WishlistButton
+          productId={product.id}
           productName={product.name}
-          className="shrink-0 rounded-control border border-line-strong shadow-none"
+          wishlisted={wishlisted}
+          returnTo={`/shop/${product.slug}`}
+          status="inline"
+          className="size-12 shrink-0 rounded-control border border-line-strong shadow-none"
         />
       </div>
 

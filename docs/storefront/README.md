@@ -24,7 +24,7 @@ Being able to tell these apart is the most important thing on this page.
 | Product, category, variant and price data | **Real.** PostgreSQL through `lib/services/` |
 | Search | **Real.** Server-side, submits to `/shop?q=…` |
 | Imagery | **Placeholder** photographs from Unsplash, in the database |
-| Wishlist saving | **Not implemented.** The control says so |
+| Wishlist saving | **Real.** Per account, in PostgreSQL. See [docs/wishlist](../wishlist/README.md) |
 | Add to bag, bag contents | **Not implemented.** The drawer says so |
 | Newsletter sign-up | **Not implemented.** The form says so |
 | Catalogue management | **Not implemented.** Edited through the seed |
@@ -403,9 +403,10 @@ No token, no spacing scale, no component appearance changed.
 
 ## Still not connected
 
-- **Wishlist and cart persistence.** Their UI is in place and each control
-  states that it is not connected, so wiring them up is adding a write path
-  rather than designing a feature.
+- **Cart persistence.** The bag UI is in place and states that it is not
+  connected. The wishlist was wired up in Phase 8, and the shape of that work —
+  a service, three Server Actions, batch state read once per page, and a
+  server-confirmed control — is the pattern the bag should follow.
 - **Catalogue management.** No admin screens and no CRUD services. The schema
   carries every field they will need.
 - **Reviews.** The product page has the section and says no reviews exist,

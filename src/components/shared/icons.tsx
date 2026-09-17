@@ -158,3 +158,20 @@ export function CompassIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/**
+ * A spinning arc, for a control that is waiting on the server.
+ *
+ * The animation is the only thing it does, so it is hidden from assistive
+ * technology like every other icon here; the control it sits in carries the
+ * accessible name and an `aria-busy` state, and the wishlist button also
+ * announces the outcome in a live region. Nobody is asked to infer progress
+ * from a moving picture.
+ */
+export function SpinnerIcon({ className, ...props }: IconProps) {
+  return (
+    <Icon className={`animate-spin ${className ?? ""}`.trim()} {...props}>
+      <path d="M12 4.5a7.5 7.5 0 1 0 7.5 7.5" />
+    </Icon>
+  );
+}

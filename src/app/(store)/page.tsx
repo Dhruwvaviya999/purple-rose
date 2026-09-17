@@ -1,5 +1,6 @@
 import { getCategoryTiles } from "@/lib/services/category-service";
 import { listMerchandisedProducts } from "@/lib/services/product-service";
+import { getWishlistStateFor } from "@/lib/wishlist/page-state";
 import { CategoryTiles } from "@/features/storefront/components/category-tiles";
 import {
   BrandStoryPanel,
@@ -60,6 +61,15 @@ export default async function HomePage() {
     listMerchandisedProducts("best-sellers", 4),
   ]);
 
+  // One query for every heart on the page, and none at all for a visitor who
+  // is not signed in. It has to follow the product reads because it needs the
+  // ids, which is why it is not in the batch above; it is a single indexed
+  // lookup on a set of eight.
+  const wishlisted = await getWishlistStateFor([
+    ...newArrivals.map((product) => product.id),
+    ...picks.map((product) => product.id),
+  ]);
+
   return (
     <>
       <Hero />
@@ -72,6 +82,7 @@ export default async function HomePage() {
             title="New this week"
             headingId="new-arrivals"
             products={newArrivals}
+            wishlisted={wishlisted}
             action={
               <ButtonLink href="/shop?new=true" variant="link" size="sm" className="px-0">
                 See everything new
@@ -89,6 +100,7 @@ export default async function HomePage() {
             title="Purple Rose picks"
             headingId="shop-picks"
             products={picks}
+            wishlisted={wishlisted}
             action={
               <ButtonLink href="/shop" variant="link" size="sm" className="px-0">
                 See everything

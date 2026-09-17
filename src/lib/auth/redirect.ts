@@ -8,8 +8,20 @@
  * this site.
  */
 
-/** Paths a signed-in user may be returned to. */
-const ALLOWED_PREFIXES = ["/admin", "/shop"] as const;
+/**
+ * Paths a signed-in user may be returned to.
+ *
+ * An allow-list of prefixes, not a "is it on our domain" test. Every entry is a
+ * page it makes sense to be sent back to after signing in: the admin area, a
+ * product or listing, and — since Phase 8 — the wishlist, which is where
+ * somebody who tapped a heart while signed out was trying to get to.
+ *
+ * `/wishlist` earns its place because the wishlist control builds the `next`
+ * value itself. Adding a prefix here is the only way a destination becomes
+ * reachable, which is what keeps the check a decision rather than a pattern
+ * match.
+ */
+const ALLOWED_PREFIXES = ["/admin", "/shop", "/wishlist"] as const;
 
 export function safeRedirectPath(
   candidate: string | null | undefined,

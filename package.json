@@ -21,7 +21,9 @@
     "check:attributes": "tsx --conditions=react-server scripts/check-attributes.ts",
     "check:admin": "tsx --conditions=react-server scripts/check-admin.ts",
     "check:admin:http": "tsx --conditions=react-server scripts/check-admin-http.ts",
-    "check:ui": "tsx --conditions=react-server scripts/check-admin-ui.ts"
+    "check:ui": "tsx --conditions=react-server scripts/check-admin-ui.ts",
+    "check:wishlist": "tsx --conditions=react-server scripts/check-wishlist.ts",
+    "check:wishlist:ui": "tsx --conditions=react-server scripts/check-wishlist-ui.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

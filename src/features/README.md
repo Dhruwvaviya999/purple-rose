@@ -38,5 +38,11 @@ implementation — it holds no logic of its own, imports nothing but `config` an
 `types`, and both sides need the same parameter names. Duplicating them so the
 arrow pointed the other way would give two lists to keep in step.
 
-Planned: `cart`, `wishlist`, `checkout`, `orders`, `account`, `reviews`,
-`coupons`, `admin-catalog`, `admin-inventory`.
+`wishlist/` holds `wishlist-state.ts`: the result type every wishlist Server
+Action returns and the fixed table of messages it may carry. It lives here
+rather than beside the actions because a `"use server"` file may only export
+async functions, and here rather than in `types/` because the messages are
+feature behaviour, not a shared shape.
+
+Planned: `cart`, `checkout`, `orders`, `account`, `reviews`, `coupons`,
+`admin-catalog`, `admin-inventory`.

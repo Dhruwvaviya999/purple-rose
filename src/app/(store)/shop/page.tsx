@@ -6,6 +6,7 @@ import {
   listFilterGroups,
   listProducts,
 } from "@/lib/services/product-service";
+import { getWishlistStateFor } from "@/lib/wishlist/page-state";
 import {
   activeFilterCount,
   parseProductQuery,
@@ -117,6 +118,13 @@ export default async function ShopPage(props: PageProps<"/shop">) {
 
   const filterCount = activeFilterCount(query);
 
+  // One lookup for the whole grid, after the ids are known. Nothing for a
+  // visitor who is not signed in: `getWishlistStateFor` returns before it
+  // queries, so anonymous browsing does not touch the wishlist tables at all.
+  const wishlisted = await getWishlistStateFor(
+    products.map((product) => product.id),
+  );
+
   const heading = query.search
     ? `Results for “${query.search}”`
     : (selectedCategory?.name ?? "Everything");
@@ -197,6 +205,7 @@ export default async function ShopPage(props: PageProps<"/shop">) {
               <>
                 <ProductGrid
                   products={products}
+                  wishlisted={wishlisted}
                   priorityCount={4}
                   className="mt-8"
                 />

@@ -20,6 +20,7 @@ Rules:
 ```
 actions/
 ├── auth.ts      request a code, verify it, sign out
+├── wishlist.ts  add, remove, toggle — the customer's saved pieces
 └── admin/       catalogue mutations, one module per feature
     ├── products.ts
     ├── categories.ts

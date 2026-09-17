@@ -17,6 +17,21 @@ import { ProductCard, ProductCardSkeleton } from "./product-card";
  */
 type ProductGridProps = {
   products: readonly ProductCardData[];
+  /**
+   * The ids the signed-in customer has saved, read once by the page for every
+   * card it is about to render. `null` — the default — means nobody is signed
+   * in, and every heart becomes a link to sign in.
+   *
+   * A set rather than a list because the lookup happens once per card: a
+   * twenty-four card grid does twenty-four hash lookups instead of twenty-four
+   * linear scans, and, far more importantly, zero queries.
+   */
+  wishlisted?: ReadonlySet<string> | null;
+  /**
+   * Ids to render as withdrawn. Only the wishlist passes this; every other
+   * listing shows ACTIVE products by construction.
+   */
+  unavailableIds?: ReadonlySet<string>;
   /** Cards to mark as priority; the rest load lazily. */
   priorityCount?: number;
   /** How much width a card gets, passed through to the image. */
@@ -29,6 +44,8 @@ const GRID =
 
 export function ProductGrid({
   products,
+  wishlisted = null,
+  unavailableIds,
   priorityCount = 0,
   sizes,
   className,
@@ -39,6 +56,8 @@ export function ProductGrid({
         <li key={product.id}>
           <ProductCard
             product={product}
+            wishlisted={wishlisted ? wishlisted.has(product.id) : null}
+            unavailable={unavailableIds?.has(product.id) ?? false}
             priority={index < priorityCount}
             sizes={sizes}
           />
@@ -84,12 +103,15 @@ export function ProductRail({
   title,
   action,
   products,
+  wishlisted = null,
   headingId,
   priorityCount = 0,
 }: {
   title: string;
   action?: ReactNode;
   products: readonly ProductCardData[];
+  /** Passed straight through to the grid. See `ProductGridProps`. */
+  wishlisted?: ReadonlySet<string> | null;
   headingId: string;
   priorityCount?: number;
 }) {
@@ -111,6 +133,7 @@ export function ProductRail({
 
       <ProductGrid
         products={products}
+        wishlisted={wishlisted}
         priorityCount={priorityCount}
         className="mt-8 sm:mt-10"
       />

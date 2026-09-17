@@ -14,16 +14,32 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/cookie";
  * token, and therefore has no idea who the cookie belongs to or whether it is
  * still valid.
  *
- * The real check lives in `requireAdmin()`, called from the admin layout, which
- * resolves the session against the database and enforces the role. A forged or
- * expired cookie gets past this file and is stopped there.
+ * The real check lives in `requireAdmin()`, called from the admin layout, and
+ * in `requireUser()` on the wishlist page. Both resolve the session against the
+ * database and enforce what they need to. A forged or expired cookie gets past
+ * this file and is stopped there.
  *
  * Its job is narrow: send visitors who are plainly not signed in to the sign-in
- * page, so they get a useful redirect instead of a flash of an admin shell.
+ * page, so they get a useful redirect instead of a flash of a shell they cannot
+ * use.
+ *
+ * It also makes that refusal an ordinary HTTP redirect. A `redirect()` from
+ * inside a streaming page arrives after the response has begun, so the status
+ * is 200 and the navigation happens in the browser: correct for a person, and
+ * indistinguishable from "served the page" to anything checking the response.
+ * Catching the cookie-less case here means an anonymous request for a private
+ * route is answered 307 before any of it is rendered.
  */
 
-/** Path prefixes that require a session. The storefront is not among them. */
-const PROTECTED_PREFIXES = ["/admin"] as const;
+/**
+ * Path prefixes that require a session.
+ *
+ * `/wishlist` joined `/admin` in Phase 8: it is the first storefront route that
+ * is one person's rather than everyone's. The rest of the storefront is public
+ * and is deliberately not listed — an anonymous shopper browses the whole
+ * catalogue without this file doing anything.
+ */
+const PROTECTED_PREFIXES = ["/admin", "/wishlist"] as const;
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

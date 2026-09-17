@@ -28,6 +28,7 @@ import { prisma } from "@/lib/db/client";
 | `session-service.ts`   | Creating, reading and revoking sessions                   |
 | `user-service.ts`      | Finding or creating an account for a phone number          |
 | `product-service.ts`   | Listing, search, facets, product detail, related products  |
+| `wishlist-service.ts`  | One customer's saved pieces: read, add, remove, toggle      |
 | `category-service.ts`  | Active categories: navigation, tiles, lookup, sitemap      |
 | `admin/`               | The catalogue **write** path, plus the reads admin screens need |
 

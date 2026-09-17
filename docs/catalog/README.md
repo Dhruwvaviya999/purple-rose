@@ -856,8 +856,11 @@ redesign:
   [Known limitations](../admin-catalog/README.md#known-limitations).
 - **Inventory workflows.** Adjustments, reservations, stock takes, returns.
   `Inventory` is the table they attach to.
-- **Cart, wishlist, orders, checkout, payment, coupons, reviews.** The wishlist
-  and bag controls are interface shells and say so; nothing claims to persist.
+- **Cart, orders, checkout, payment, coupons, reviews.** The bag control is an
+  interface shell and says so. The wishlist is real as of Phase 8 and reads the
+  catalogue through the same mapper this document describes — including, in one
+  deliberate place, products that are no longer ACTIVE. See
+  [docs/wishlist/README.md](../wishlist/README.md).
 - **Production image storage.** `ProductImage.url` already accepts any absolute
   URL.
 - **Size guide.** `Size` carries measurements; nothing renders them.

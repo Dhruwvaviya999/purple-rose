@@ -29,7 +29,10 @@ export type ProductBadgeKind =
   | "sale"
   | "bestseller"
   | "featured"
-  | "sold-out";
+  | "sold-out"
+  /** Withdrawn from sale. Only the wishlist shows this: it is the one surface
+   *  that renders a product the storefront no longer lists. */
+  | "unavailable";
 
 export type ProductColour = {
   /** Human name, shown to screen readers and in tooltips. */

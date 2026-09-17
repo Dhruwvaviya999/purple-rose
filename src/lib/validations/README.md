@@ -11,6 +11,16 @@ Rules:
 - Group by domain, for example `auth.ts`, `cart.ts`, `checkout.ts`,
   `product.ts`.
 
-A validation library is added in the phase that introduces the first form
-submission. Nothing is installed yet, so no unused dependency ships.
-This folder is empty on purpose until then.
+## What is here
+
+| Schema                | Covers                                                |
+| --------------------- | ----------------------------------------------------- |
+| `auth.ts`             | Phone input, one-time codes, the sign-in return path   |
+| `catalog-admin.ts`    | Every admin catalogue mutation                         |
+| `wishlist.ts`         | The one input a wishlist mutation takes: a product id  |
+
+`wishlist.ts` is worth reading as an example of the rule above about boundaries.
+It has a single field. There is no `userId` and no `wishlistId`, because who is
+asking is decided by the session rather than by the request, and a schema field
+for an identity would be an authorisation input the caller controls. The
+absence is the design.

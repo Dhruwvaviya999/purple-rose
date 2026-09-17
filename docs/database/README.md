@@ -384,7 +384,10 @@ costs nothing and unblocks the next phase.
 
 ## What is deliberately not modelled yet
 
-Not modelled: `Cart`, `CartItem`, `Wishlist`, `Order`, `OrderItem`, `Address`,
+`Wishlist` and `WishlistItem` arrived in Phase 8 and are modelled; see
+[docs/wishlist/README.md](../wishlist/README.md).
+
+Still not modelled: `Cart`, `CartItem`, `Order`, `OrderItem`, `Address`,
 `Payment`, `Shipment`, `Coupon`, `Review`, and any inventory ledger.
 
 This is a decision, not an omission. A twenty-table ecommerce schema written

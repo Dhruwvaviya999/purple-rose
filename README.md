@@ -6,7 +6,7 @@ The application is built as a single Next.js project: the storefront, the
 customer account area, the admin console and the backend all live here. There
 is no separate API service.
 
-> **Current phase: Phase 7 — admin attributes, and a real browser pass.** Complete.
+> **Current phase: Phase 8 — customer wishlist.** Complete.
 >
 > - **Phase 1** built the project foundation: routing boundaries, design
 >   tokens, UI primitives and the store shell.
@@ -25,9 +25,12 @@ is no separate API service.
 > - **Phase 7** added colour and size management, so the catalogue no longer
 >   depends on the seed for anything, and closed Phase 6's outstanding
 >   verification gap with a real headless-browser pass.
+> - **Phase 8** added the wishlist: the first customer-owned persistent
+>   feature, saved to PostgreSQL against the signed-in account rather than to
+>   the browser, so it survives a refresh, a sign-out and a change of device.
 >
 > The catalogue is edited entirely through `/admin`. See
-> [Phase 7 — admin attributes](#phase-7--admin-attributes).
+> [Phase 8 — customer wishlist](#phase-8--customer-wishlist).
 
 ---
 
@@ -116,22 +119,35 @@ pnpm check:attributes    # colours and sizes; needs DATABASE_URL
 pnpm check:admin         # admin mutations and the guard audit; needs DATABASE_URL
 pnpm check:admin:http    # admin access control; needs a running server as well
 pnpm check:ui            # the admin UI in a real browser; needs a running server
+pnpm check:wishlist      # wishlist data, authorisation and edge cases; needs DATABASE_URL
+pnpm check:wishlist:ui   # the wishlist in a real browser; needs a running server
 ```
 
 `pnpm check:catalog:db` re-runs the catalogue seed to prove that doing so
 changes nothing. `pnpm check:admin` creates and deletes its own records, and
 `pnpm check:admin:http` briefly archives one seeded product and restores it.
-All three write, so run them against a development database.
+The two wishlist suites create their own accounts on reserved `+1555…` numbers
+and their own marked products, and remove every one of them in a `finally`;
+they archive and republish a product they created, never a seeded one. All of
+these write, so run them against a development database.
 
-`pnpm check:admin:http` and `pnpm check:ui` need the app running. Start it
-first, or point them somewhere else:
+`pnpm check:wishlist` prints `prisma:error` lines. Several of its checks
+violate a unique constraint on purpose — that is what proves duplicates are
+impossible — and a `PASS` underneath one is the constraint doing its job.
+
+`pnpm check:admin:http`, `pnpm check:ui` and `pnpm check:wishlist:ui` need the
+app running. `pnpm check:wishlist` uses it too, for its anonymous-access
+checks, and skips them if nothing is answering. Start it first, or point them
+somewhere else:
 
 ```bash
 pnpm build && pnpm start
 pnpm check:admin:http
 pnpm check:ui
+pnpm check:wishlist
+pnpm check:wishlist:ui
 # or
-CHECK_BASE_URL=http://localhost:3100 pnpm check:ui
+CHECK_BASE_URL=http://localhost:3100 pnpm check:wishlist:ui
 ```
 
 `pnpm check:ui` drives a real headless Chromium. The browser binary is not in
@@ -180,7 +196,7 @@ Three rules hold for the whole project:
 | `/`            | Storefront home: category tiles and two product rails          |
 | `/shop`        | The catalogue: search, filters, sort and paging, all in the URL |
 | `/shop/[slug]` | Product page, rendered per request from real slugs             |
-| `/wishlist`    | Wishlist shell. Saving is not implemented                      |
+| `/wishlist`    | Saved pieces. **Signed-in customers only**, never indexed       |
 | `/cart`        | Bag shell. Carts are not implemented                           |
 | `/login`       | Phone plus one-time code sign-in, public                       |
 | `/admin`       | Catalogue dashboard. **ADMIN only**, never indexed             |
@@ -225,7 +241,9 @@ scripts/
 ├── check-admin.ts            admin mutations, plus the "every action is guarded" audit
 ├── check-admin-http.ts       admin access control, against a running server
 ├── check-attributes.ts       colours and sizes, and what deactivation does
-└── check-admin-ui.ts         the admin UI in a real browser, at nine widths
+├── check-admin-ui.ts         the admin UI in a real browser, at nine widths
+├── check-wishlist.ts         wishlist data, ownership, archiving, isolation
+└── check-wishlist-ui.ts      the wishlist in a real browser, at nine widths
 
 docs/
 ├── database/README.md        database architecture, decisions and workflows
@@ -233,7 +251,8 @@ docs/
 ├── storefront/README.md      component system and the product data contract
 ├── catalog/README.md         catalogue domain, services, filtering, seeding
 ├── admin-catalog/README.md   admin architecture, authorisation, mutations
-└── admin-attributes/README.md  colours, sizes, deactivation, browser verification
+├── admin-attributes/README.md  colours, sizes, deactivation, browser verification
+└── wishlist/README.md        wishlist ownership, archiving, batch state, caching
 
 src/
 ├── proxy.ts                  optimistic request guard (Next.js 16 convention)
@@ -243,7 +262,7 @@ src/
 │   │   ├── page.tsx          /
 │   │   ├── shop/page.tsx     /shop — listing, filters, sort, paging
 │   │   ├── shop/[slug]/      /shop/<piece> — product page
-│   │   ├── wishlist/         /wishlist — shell
+│   │   ├── wishlist/         /wishlist — saved pieces, signed-in only
 │   │   └── cart/             /cart — shell
 │   ├── (auth)/               sign-in group: focused, chrome-light
 │   │   ├── layout.tsx
@@ -273,9 +292,11 @@ src/
 │
 ├── features/
 │   ├── auth/                 sign-in form, OTP input, sign-out control
+│   ├── wishlist/             the wishlist action result type and its messages
 │   └── storefront/           page sections and the URL query contract
 ├── actions/
 │   ├── auth.ts               the only two authentication endpoints
+│   ├── wishlist.ts           add, remove, toggle — the three wishlist endpoints
 │   └── admin/                catalogue mutations, one module per feature
 │
 ├── generated/prisma/         Prisma Client — generated on install, git-ignored
@@ -284,6 +305,7 @@ src/
 │   ├── auth/                 sessions, roles, OTP crypto, phone normalisation
 │   ├── admin/                money conversion, admin URL contract, action plumbing
 │   ├── catalog/              filters, row mapping, attribute vocabularies
+│   ├── wishlist/             per-request wishlist state, revalidation plumbing
 │   ├── db/client.ts          the single Prisma Client (server-only)
 │   ├── utils/                framework-agnostic helpers
 │   ├── services/             the only layer that queries the database
@@ -578,14 +600,82 @@ did not.
 customer-facing size guide from the measurement fields, and everything
 downstream of an order.
 
+## Phase 8 — customer wishlist
+
+The first feature that belongs to a customer rather than to the shop.
+
+Full detail is in [docs/wishlist/README.md](docs/wishlist/README.md). The short
+version:
+
+**It is persisted, per account, in PostgreSQL.** Two new tables, `Wishlist` and
+`WishlistItem`, added in one migration. Nothing is kept in `localStorage` and
+nothing is kept in a cookie, so a saved piece survives a refresh, a sign-out and
+a move to a different device — because it was never in the browser to begin
+with.
+
+**Ownership is the whole security model.** A wishlist is reached from the
+session: cookie, to `Session` row, to `User.id`, to the one `Wishlist` whose
+`userId` is unique. No Server Action accepts a `userId`, no schema has a field
+for one, and **no function anywhere takes a `wishlistId`** — an attacker holding
+somebody else's list id has nothing to send it to. Customer isolation is
+verified in both directions.
+
+**Add, remove and toggle**, from the product page and from every product card.
+The control is server-confirmed rather than optimistic: the heart fills when the
+database says it is filled, so a failed mutation leaves the previous state and
+an error rather than a filled heart over something that was never saved.
+
+**Duplicates are impossible at the database level.** `wishlistId + productId` is
+unique, and the service inserts and catches the violation rather than checking
+first — a check and an insert have a window between them, and a double click
+lands squarely in it.
+
+**The wishlist is product-level.** No colour, no size, no SKU, and nothing is
+snapshotted: the list shows what a piece costs and is called *now*. Choosing a
+variant is Cart's job, against the existing `ProductVariant` model, which is why
+Phase 9 can be built without touching any of this.
+
+**An archived piece stays in the list.** An admin withdrawing a product is not a
+reason to throw away what a customer said they wanted. It is shown desaturated,
+badged **Unavailable**, with "Currently unavailable" in words, no price and no
+link — and it becomes an ordinary card again by itself if the product is
+republished, with nothing re-added. A piece that is not `ACTIVE` cannot be newly
+saved; one already saved stays.
+
+**No product card queries the database.** Each page reads the wishlist state for
+every card it is about to render in one query, and hands each card a boolean. An
+anonymous visitor costs **zero** wishlist queries: the lookup returns before it
+reaches the database, and their heart is a link to sign in that remembers the
+piece they were looking at.
+
+**`/wishlist` is private.** `noindex`, disallowed in `robots.txt`, absent from
+the sitemap, rendered per request, and never cached across customers — the only
+memoisation in the read path is React's request-scoped `cache()`, which is
+discarded at the end of the request that created it.
+
+**Two new suites.** `pnpm check:wishlist` covers the data, the authorisation and
+the edge cases, and reads the action module as source to assert that every
+endpoint authenticates before it validates. `pnpm check:wishlist:ui` drives
+headless Chromium through the whole feature at nine widths, reusing the Phase 7
+Playwright setup.
+
+**It found one real defect**, fixed: the heart on a product card sat underneath
+the card's stretched link, so every click opened the product instead of saving
+it. It had been that way since Phase 4 and was invisible because the control did
+nothing until now.
+
+**Still to come:** the bag, and "move to bag" from a saved piece — which is
+where the colour and size the wishlist deliberately never captured get asked
+for.
+
 ## What is not built yet
 
 Deliberately absent, each arriving in the phase that needs it:
 
 - SMS delivery. Codes are written to the server log in development, and that
   transport refuses to run in production
-- A customer account area. Signing in works; there is no profile or order
-  history to show yet
+- A customer account area beyond the wishlist. Signing in works and saved
+  pieces persist; there is no profile, address book or order history yet
 - **An audit log.** `updatedAt` records when something changed, never who
 - **A customer-facing size guide.** `Size` carries bust, waist and hip
   measurements and the admin edits them; nothing renders them yet
@@ -594,13 +684,13 @@ Deliberately absent, each arriving in the phase that needs it:
 - **Real product photography.** Development placeholders come from Unsplash,
   declared in `prisma/catalog/data.ts` and `src/config/media.ts`. No component
   contains a URL
-- **Wishlist and bag persistence.** Both have their UI and both say they are
-  not connected
+- **Bag persistence.** The bag has its UI and says it is not connected. The
+  wishlist is real as of Phase 8
 - **Newsletter sending.** The form is built and disabled
 - **Sales analytics.** There are no orders, so nothing knows what has sold.
   `bestSeller` is a merchandising flag an operator sets, and is never presented
   as a ranking
-- Cart, wishlist, checkout, orders, payments
+- Cart, checkout, orders, payments
 - Coupons, reviews, shipping and email providers
 - Image upload and media storage
 - Dark theme
@@ -619,8 +709,9 @@ The database models for all of the above are also absent on purpose. See
 | 5     | Product, category and variant catalogue behind that UI — **done** |
 | 6     | Admin console: catalogue management — **done**                |
 | 7     | Admin attributes, and real browser verification — **done**    |
-| 8     | Bag and wishlist persistence                                 |
-| 9     | Checkout, payments and orders                                |
-| 10    | Inventory workflows, coupons, reviews, image uploads         |
+| 8     | Customer wishlist, persisted per account — **done**           |
+| 9     | Bag persistence and cart, against `ProductVariant`            |
+| 10    | Checkout, payments and orders                                |
+| 11    | Inventory workflows, coupons, reviews, image uploads          |
 
 Each phase adds the database models its feature needs, through a migration.

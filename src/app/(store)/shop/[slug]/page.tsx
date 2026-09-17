@@ -6,6 +6,7 @@ import {
   getProductBySlug,
   listRelatedProducts,
 } from "@/lib/services/product-service";
+import { getWishlistStateFor } from "@/lib/wishlist/page-state";
 import { Breadcrumbs } from "@/components/commerce/breadcrumbs";
 import { Price } from "@/components/commerce/price";
 import { ProductBadge, pickPrimaryBadge } from "@/components/commerce/product-badge";
@@ -120,6 +121,14 @@ export default async function ProductPage(props: PageProps<"/shop/[slug]">) {
   const badge = pickPrimaryBadge(product.badges, product.inStock);
   const related = await listRelatedProducts(slug);
 
+  // This product and the related rail in one lookup, so the page does not ask
+  // twice. Anonymous visitors get `null` without a query, and the panel and the
+  // cards then render the sign-in variant of the heart.
+  const wishlisted = await getWishlistStateFor([
+    product.id,
+    ...related.map((entry) => entry.id),
+  ]);
+
   return (
     <>
       <Section spacing="sm">
@@ -169,7 +178,10 @@ export default async function ProductPage(props: PageProps<"/shop/[slug]">) {
                 <Text className="mt-7">{product.description}</Text>
 
                 <div className="mt-9">
-                  <ProductPurchasePanel product={product} />
+                  <ProductPurchasePanel
+                    product={product}
+                    wishlisted={wishlisted ? wishlisted.has(product.id) : null}
+                  />
                 </div>
 
                 <div className="mt-10 space-y-8 border-t border-line pt-8">
@@ -208,6 +220,7 @@ export default async function ProductPage(props: PageProps<"/shop/[slug]">) {
               title="You might also like"
               headingId="related-products"
               products={related}
+              wishlisted={wishlisted}
               action={
                 <ButtonLink href="/shop" variant="link" size="sm" className="px-0">
                   See everything
