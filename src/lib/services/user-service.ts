@@ -5,7 +5,8 @@ import { Role } from "@/generated/prisma/enums";
 import type { SessionUser } from "./session-service";
 
 /**
- * Account lookup and creation for the sign-in flow.
+ * Account lookup and creation for the sign-in flow, and the one thing a
+ * customer may change about their own account.
  */
 
 /**
@@ -30,6 +31,34 @@ export async function findOrCreateUserByPhone(
     where: { phoneNumber },
     update: {},
     create: { phoneNumber, role: Role.CUSTOMER },
+    select: { id: true, phoneNumber: true, name: true, role: true },
+  });
+}
+
+/**
+ * Change a customer's own display name.
+ *
+ * The only column this application lets somebody edit about themselves, and the
+ * `select` is what makes that true rather than merely intended: `data` names one
+ * field, so there is no path by which a form could reach `role` or
+ * `phoneNumber`. Both are identity — the role is set by the server and the
+ * number is proven by a one-time code — and changing a phone number is a
+ * verification flow, not a text input.
+ *
+ * `null` is a legitimate value. An account created by a one-time code has no
+ * name until somebody types one, and clearing a mistyped one back to nothing
+ * should not be impossible.
+ *
+ * Scoped by `id`, which the caller resolved from the session. Nothing from a
+ * request reaches it.
+ */
+export async function updateUserName(
+  userId: string,
+  name: string | null,
+): Promise<SessionUser> {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { name },
     select: { id: true, phoneNumber: true, name: true, role: true },
   });
 }

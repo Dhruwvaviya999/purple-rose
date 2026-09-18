@@ -175,3 +175,20 @@ export function SpinnerIcon({ className, ...props }: IconProps) {
     </Icon>
   );
 }
+
+/**
+ * A house. Used by the address book's empty state.
+ *
+ * Decorative, like every other icon here: the surface it sits on carries the
+ * words, and an empty state that relies on a picture to say "no addresses yet"
+ * is an empty state a screen reader skips.
+ */
+export function HomeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 10.5 12 4l8 6.5" />
+      <path d="M5.5 9.7V19a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9.7" />
+      <path d="M9.75 20v-5.5h4.5V20" />
+    </Icon>
+  );
+}

@@ -17,8 +17,15 @@ import { siteConfig } from "@/config/site";
  * reaches it anyway — this file only asks, and a signed-out request is
  * redirected to sign-in regardless.
  *
- * `/cart` stays crawlable: it is still a placeholder with no content a crawler
- * would keep. It becomes `noindex` when it holds a person's own basket.
+ * `/account` is blocked for the same reason and more strongly: it holds a name,
+ * a phone number and somebody's home address. Every page under it also carries
+ * `robots: { index: false, follow: false }`, and a signed-out request is
+ * redirected to sign-in before any of it renders.
+ *
+ * `/cart` stays crawlable, because a bag is not an account feature and an
+ * anonymous visitor gets a real page there. What they get is the empty state:
+ * a crawler has no cookie, so there is nothing of anybody's to see. The page
+ * itself carries `noindex` so a crawler that reaches it keeps nothing.
  *
  * `disallow` is a request to crawlers and nothing more. `/admin` is protected
  * by a server-side session and role check, and that is what actually keeps
@@ -32,7 +39,14 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/admin", "/admin/", "/api/", "/login", "/wishlist"],
+      disallow: [
+        "/admin",
+        "/admin/",
+        "/api/",
+        "/login",
+        "/wishlist",
+        "/account",
+      ],
     },
     sitemap: `${siteConfig.url}/sitemap.xml`,
     host: siteConfig.url,

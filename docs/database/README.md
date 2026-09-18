@@ -391,8 +391,14 @@ costs nothing and unblocks the next phase.
 owned by nobody — or by two people — impossible; see
 [docs/cart/README.md](../cart/README.md).
 
-Still not modelled: `Order`, `OrderItem`, `Address`, `Payment`, `Shipment`,
-`Coupon`, `Review`, and any inventory ledger.
+`Address` arrived in Phase 10, with a partial unique index that makes "one
+default per customer" true rather than merely intended; see
+[docs/customer-account/README.md](../customer-account/README.md).
+
+Still not modelled: `Order`, `OrderItem`, `OrderAddress`, `Payment`, `Shipment`,
+`Coupon`, `Review`, and any inventory ledger. An order will **snapshot** address
+and price rather than reference the mutable rows — the reasoning is in the
+customer-account and cart documents.
 
 This is a decision, not an omission. A twenty-table ecommerce schema written
 before those features exist would be guessing at the questions that actually

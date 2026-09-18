@@ -53,6 +53,8 @@ model User {
   wishlist Wishlist?
   /// At most one, created lazily the first time something is added to a bag.
   cart     Cart?
+  /// Where their deliveries go. Capped in the application, not the schema.
+  addresses Address[]
 }
 
 /// A one-time code issued to a phone number, awaiting verification.
@@ -788,4 +790,89 @@ model CartItem {
   /// Serves the foreign key check when a variant is deleted, and answers "how
   /// many bags is this sitting in" for a later merchandising screen.
   @@index([variantId])
+}
+
+// ---------------------------------------------------------------------------
+// Customer account
+//
+// Added in Phase 10. See docs/customer-account/README.md for the reasoning.
+//
+// The account itself needed no new columns: `User` already carries the phone
+// number that identifies it, an optional display name and a role. What it
+// lacked was somewhere to send a parcel.
+// ---------------------------------------------------------------------------
+
+/// A place a customer has saved to deliver to.
+///
+/// **Mutable, on purpose, and therefore not order history.** A customer can
+/// edit or delete any of these at any time, so an order must never point at one
+/// and assume it still describes where that order actually went. When orders
+/// arrive they will *snapshot* these columns onto the order itself. Nothing in
+/// this model should be read as a permanent record; it is a convenience so
+/// somebody does not retype their street every time.
+///
+/// Shaped for local delivery in India today and for more than that later: the
+/// columns are the ones any postal address needs, `country` is stored
+/// explicitly rather than assumed, and the per-country rules — what a valid
+/// postal code looks like, which fields matter — live in the validation layer
+/// where they can differ by country without a migration.
+model Address {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  userId String @db.Uuid
+  /// Deleting an account takes its addresses with it, as it does sessions,
+  /// the wishlist and the bag. Nothing here outlives the person it belongs to,
+  /// and nothing else references it — a future order will hold its own copy.
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// What the customer calls it: "Home", "Work", "Mum's". Free text rather
+  /// than an enum, because a customer with two homes needs "Home" and
+  /// "Home 2" and an enum would make that impossible. It is a nickname, never
+  /// an identity: two addresses may share a label.
+  label String @db.VarChar(40)
+
+  /// Who is receiving the parcel, which is not always the account holder.
+  /// Ordering a gift to a sister means the account says one name and the
+  /// doorstep needs another, so the two are separate columns.
+  recipientName String @db.VarChar(120)
+
+  /// E.164, normalised by the same `lib/auth/phone.ts` the sign-in uses, so a
+  /// delivery number and an account number are stored the same way. Not a
+  /// foreign key and not required to match the account: the person at the door
+  /// may be reachable on a different phone.
+  phoneNumber String @db.VarChar(16)
+
+  addressLine1 String  @db.VarChar(200)
+  /// Optional. A flat number or a building name, where there is one.
+  addressLine2 String? @db.VarChar(200)
+  /// Optional, and genuinely useful in Indian cities where a landmark finds a
+  /// door faster than a street number does.
+  landmark     String? @db.VarChar(120)
+
+  city       String @db.VarChar(80)
+  state      String @db.VarChar(80)
+  /// Wide enough for any country's format, not just a six-digit Indian PIN.
+  /// The six-digit rule is a validation rule, applied per country, not a shape
+  /// the database is locked into.
+  postalCode String @db.VarChar(16)
+
+  /// ISO 3166-1 alpha-2, so "IN" rather than "India" or "india" or "Bharat".
+  /// Stored explicitly rather than assumed: the shop sells locally today, and
+  /// a column that silently means India is a column that lies later.
+  country String @default("IN") @db.VarChar(2)
+
+  /// Where a future checkout will start from. At most one per customer, which
+  /// the application enforces in a transaction and the database enforces with
+  /// a partial unique index — see the migration.
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  /// Serves both reads this table has: "this customer's addresses", which is
+  /// every list, and "this customer's default", which is the lookup a future
+  /// checkout will open with. A customer holds at most ten of these, so the
+  /// list's secondary ordering by `updatedAt` is a sort of ten rows in memory
+  /// rather than a second index maintained on every write.
+  @@index([userId, isDefault])
 }

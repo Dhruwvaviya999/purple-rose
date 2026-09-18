@@ -25,9 +25,11 @@
  * - **Accessible.** Names on every control, the drawer's focus behaviour, the
  *   Escape key, focus restoration, and whether outcomes are announced.
  *
- * **It writes.** One account on a reserved `+1555…` number and one product
- * marked `zzzcartui`, both removed in a `finally` including on failure. Seeded
- * rows are read, never modified.
+ * **It writes.** One reserved test account and one product marked `zzzcartui`,
+ * both removed in a `finally` including on failure. Seeded rows are read, never
+ * modified. The account's number is a valid Indian mobile rather than the
+ * `+1555…` block the other suites reserve — see `CUSTOMER_NUMBER` for why that
+ * difference is load-bearing.
  */
 import { config as loadEnvFiles } from "dotenv";
 
@@ -48,7 +50,21 @@ const BASE = (process.env.CHECK_BASE_URL ?? "http://localhost:3000").replace(
 );
 
 const MARK = "zzzcartui";
-const CUSTOMER_NUMBER = "+15550107901";
+
+/**
+ * The account this suite signs in as.
+ *
+ * Deliberately **not** in the `+1555…` range every other suite reserves. That
+ * range is the NANP's fictional block, and `libphonenumber-js` correctly
+ * refuses it as not a possible number — so the sign-in form rejects it at the
+ * first field and no code is ever requested. Excellent for fixtures that must
+ * never collide with a real account; useless for driving the real form.
+ *
+ * This is a valid Indian mobile in an obviously-synthetic pattern, so the merge
+ * can be exercised through the actual sign-in flow. Clean-up deletes it by
+ * exact match, never by a pattern, exactly as the other suites do.
+ */
+const CUSTOMER_NUMBER = "+918888800001";
 
 /** The widths Phase 7 fixed, with a realistic height for each class. */
 const WIDTHS = [
@@ -203,6 +219,94 @@ async function visible(locator: Locator, timeout = 20_000): Promise<boolean> {
     .waitFor({ state: "visible", timeout })
     .then(() => true)
     .catch(() => false);
+}
+
+/** A note about how the run went, distinct from a pass or a fail. */
+function log(message: string): void {
+  console.log(`  note: ${message}`);
+}
+
+/**
+ * Sign in through the real form, so the real `loginAction` runs — or report
+ * that this build will not allow it.
+ *
+ * The code is not guessable, so it is recovered from the challenge row the way
+ * `check:auth:db` does: by hashing all million candidates against the stored
+ * HMAC until one matches. That is only possible because the secret is the
+ * local one; it is a test recovering its own code, not a weakness in the
+ * scheme.
+ *
+ * Returns false rather than throwing when the code stage never appears, which
+ * is what happens on a production build where the console transport is
+ * disabled. The caller then replays `loginAction` instead and says so.
+ */
+async function signInThroughTheForm(
+  page: Page,
+  customerId: string,
+): Promise<boolean> {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: customerId },
+    select: { phoneNumber: true },
+  });
+
+  await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Mobile number").fill(user.phoneNumber);
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  const codeField = page.locator("input[name='code']").first();
+
+  // Short: on a production build the transport refuses immediately and the
+  // form shows an error, so there is nothing to wait for.
+  if (!(await visible(codeField, 15_000))) {
+    return false;
+  }
+
+  const challenge = await prisma.otpChallenge.findFirst({
+    where: { phoneNumber: user.phoneNumber, consumedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: { codeHash: true },
+  });
+
+  if (!challenge) {
+    log("the code stage appeared but no challenge row was written");
+    return false;
+  }
+
+  const { hashOtpCode } = await import("../src/lib/auth/otp-code");
+
+  let code: string | undefined;
+  for (let candidate = 0; candidate < 1_000_000; candidate += 1) {
+    const padded = String(candidate).padStart(6, "0");
+
+    if (hashOtpCode(user.phoneNumber, padded) === challenge.codeHash) {
+      code = padded;
+      break;
+    }
+  }
+
+  if (!code) {
+    log("the code could not be recovered from its hash");
+    return false;
+  }
+
+  await codeField.fill(code);
+  await page.getByRole("button", { name: "Verify and continue" }).click();
+
+  const left = await page
+    .waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30_000 })
+    .then(() => true)
+    .catch(() => false);
+
+  if (!left) {
+    log("the code was accepted but the browser never left /login");
+    return false;
+  }
+
+  // The merge happens inside the action, before the redirect resolves. Give the
+  // route refresh a moment to land before anything is asserted about the bag.
+  await page.waitForLoadState("networkidle").catch(() => undefined);
+
+  return true;
 }
 
 /* ------------------------------------------------------------------ *
@@ -366,6 +470,73 @@ async function runGuestFlow(
     await visible(page.getByRole("link", { name: "Explore the collection" })),
   );
 
+  console.log("\n== emptying the bag ==");
+
+  // Two pieces back in, so "empty the bag" has something to do that removing
+  // one line would not.
+  await addFromProductPage(page, product.slug);
+  await page.goto(`${BASE}/cart`, { waitUntil: "domcontentloaded" });
+
+  const emptyBag = page.getByRole("button", { name: "Empty bag" });
+  check("the bag page offers to empty itself", await visible(emptyBag));
+
+  await clickCentred(emptyBag);
+
+  // One press asks; it does not empty. That is the point of the control.
+  check(
+    "one press asks for confirmation rather than emptying",
+    await visible(page.getByRole("button", { name: /are you sure/i })),
+  );
+  check(
+    "and offers a way out",
+    await visible(page.getByRole("button", { name: "Keep it" })),
+  );
+  check(
+    "nothing has been removed yet",
+    (await badgeCount(page)) > 0,
+    String(await badgeCount(page)),
+  );
+
+  await page.getByRole("button", { name: "Keep it" }).click();
+  check(
+    "backing out leaves the bag alone",
+    (await badgeCount(page)) > 0 &&
+      (await visible(page.getByRole("button", { name: "Empty bag" }))),
+  );
+
+  await clickCentred(page.getByRole("button", { name: "Empty bag" }));
+  await clickCentred(page.getByRole("button", { name: /are you sure/i }));
+
+  check("confirming empties the bag", await waitForBadge(page, 0));
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  check(
+    "and the empty state is what is left",
+    await visible(page.getByRole("heading", { name: "Your bag is empty" })),
+  );
+  // Scoped to this browser's own bag, read back through the same token the
+  // cookie carries. A count across every guest bag would also count the ones
+  // other sections leave behind and pass for the wrong reason.
+  const { hashGuestToken } = await import("../src/lib/cart/ownership");
+  const ownToken = (await context.cookies()).find(
+    (cookie) => cookie.name === CART_COOKIE_NAME,
+  )?.value;
+
+  check(
+    "with nothing left in this browser's bag in the database either",
+    ownToken !== undefined &&
+      (await prisma.cartItem.count({
+        where: { cart: { guestTokenHash: hashGuestToken(ownToken) } },
+      })) === 0,
+  );
+  check(
+    "though the bag row itself survives, ready for the next add",
+    ownToken !== undefined &&
+      (await prisma.cart.count({
+        where: { guestTokenHash: hashGuestToken(ownToken) },
+      })) === 1,
+  );
+
   await context.close();
   console.log("");
 }
@@ -457,19 +628,6 @@ async function runMergeFlow(
   await addFromProductPage(page, guestPiece.slug);
   check("the guest bag has a garment in it", (await badgeCount(page)) === 1);
 
-  // Sign-in, replayed.
-  //
-  // The OTP form itself cannot be driven against a production build: the console
-  // transport refuses to run when NODE_ENV is production, deliberately, so that
-  // sign-in codes can never reach a production log. `pnpm start` sets exactly
-  // that. So this does what `loginAction` does, in the same order — read the
-  // guest token the browser is carrying, create a real session row, run the real
-  // merge, clear the guest cookie — rather than pretending to type a code.
-  //
-  // What is not covered here is that `loginAction` calls it at all; that is
-  // asserted against the source in `pnpm check:cart`, and the form itself is
-  // covered by `pnpm check:auth:db`. Everything below this line is the real
-  // merge against the real database, seen through a real browser.
   const guestToken = (await context.cookies()).find(
     (cookie) => cookie.name === CART_COOKIE_NAME,
   )?.value;
@@ -479,22 +637,60 @@ async function runMergeFlow(
   const { hashGuestToken } = await import("../src/lib/cart/ownership");
   const { mergeGuestCart } = await import("../src/lib/services/cart-service");
 
-  const session = await createSession(customerId);
-  const outcome = await mergeGuestCart(customerId, hashGuestToken(guestToken!));
+  // Sign in for real if this build will let us.
+  //
+  // Two things decide whether it will. The console OTP transport refuses to run
+  // when NODE_ENV is production — by design, so a sign-in code can never reach
+  // a production log — and `pnpm start` sets exactly that. And the number has
+  // to be one `libphonenumber-js` considers possible, which is why this suite
+  // uses a valid Indian mobile rather than the `+1555…` block the others
+  // reserve. Against a development server, with a valid number, the form can be
+  // driven all the way through, and then the merge under test is the one
+  // `loginAction` performs rather than one this script called.
+  //
+  // So: try the form. If the code stage appears, that is the real path and it
+  // is used. If it does not, fall back to replaying what `loginAction` does in
+  // the same order, and say so, because a suite that silently degrades is worse
+  // than one that reports which path it took.
+  const realSignIn = await signInThroughTheForm(page, customerId);
 
-  check("the merge reports that it found a guest bag", outcome.hadGuestCart);
+  if (realSignIn) {
+    check("the sign-in form was driven end to end, code and all", true);
+    check(
+      "and the merge ran inside loginAction, not from this script",
+      (await prisma.cart.count({
+        where: { guestTokenHash: hashGuestToken(guestToken!) },
+      })) === 0,
+    );
+  } else {
+    log(
+      "the OTP form could not be driven on this build — replaying loginAction instead",
+    );
 
-  await context.clearCookies({ name: CART_COOKIE_NAME });
-  await context.addCookies([
-    {
-      name: SESSION_COOKIE_NAME,
-      value: session.token,
-      domain: "localhost",
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-    },
-  ]);
+    const session = await createSession(customerId);
+    const outcome = await mergeGuestCart(customerId, hashGuestToken(guestToken!));
+
+    check("the merge reports that it found a guest bag", outcome.hadGuestCart);
+
+    await context.clearCookies({ name: CART_COOKIE_NAME });
+    await context.addCookies([
+      {
+        name: SESSION_COOKIE_NAME,
+        value: session.token,
+        domain: "localhost",
+        path: "/",
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
+  }
+
+  check(
+    "the guest cookie is gone either way",
+    !(await context.cookies()).some(
+      (cookie) => cookie.name === CART_COOKIE_NAME,
+    ),
+  );
 
   await page.goto(`${BASE}/cart`, { waitUntil: "domcontentloaded" });
   const bag = await page.locator("main").innerText();

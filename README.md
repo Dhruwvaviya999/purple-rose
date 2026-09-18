@@ -6,7 +6,7 @@ The application is built as a single Next.js project: the storefront, the
 customer account area, the admin console and the backend all live here. There
 is no separate API service.
 
-> **Current phase: Phase 8 — customer wishlist.** Complete.
+> **Current phase: Phase 10 — customer account and addresses.** Complete.
 >
 > - **Phase 1** built the project foundation: routing boundaries, design
 >   tokens, UI primitives and the store shell.
@@ -28,9 +28,15 @@ is no separate API service.
 > - **Phase 8** added the wishlist: the first customer-owned persistent
 >   feature, saved to PostgreSQL against the signed-in account rather than to
 >   the browser, so it survives a refresh, a sign-out and a change of device.
+> - **Phase 9** added the bag: a real shopping cart against product variants,
+>   for guests as well as signed-in customers, merged into the account on
+>   sign-in and priced by the server on every read.
+> - **Phase 10** added the customer account: an overview, a name to be addressed
+>   by, and a book of delivery addresses with one default — the bridge between
+>   what a customer owns and the checkout that will use it.
 >
 > The catalogue is edited entirely through `/admin`. See
-> [Phase 8 — customer wishlist](#phase-8--customer-wishlist).
+> [Phase 10 — customer account and addresses](#phase-10--customer-account-and-addresses).
 
 ---
 
@@ -121,6 +127,11 @@ pnpm check:admin:http    # admin access control; needs a running server as well
 pnpm check:ui            # the admin UI in a real browser; needs a running server
 pnpm check:wishlist      # wishlist data, authorisation and edge cases; needs DATABASE_URL
 pnpm check:wishlist:ui   # the wishlist in a real browser; needs a running server
+pnpm check:cart          # bag data, ownership, merge, constraints; needs DATABASE_URL
+pnpm check:cart:http     # bag status codes, cookies and isolation; needs a running server
+pnpm check:cart:ui       # the bag in a real browser; needs a running server
+pnpm check:account       # account, addresses, defaults, constraints; needs DATABASE_URL
+pnpm check:account:ui    # the account area in a real browser; needs a running server
 ```
 
 `pnpm check:catalog:db` re-runs the catalogue seed to prove that doing so
@@ -135,10 +146,9 @@ these write, so run them against a development database.
 violate a unique constraint on purpose — that is what proves duplicates are
 impossible — and a `PASS` underneath one is the constraint doing its job.
 
-`pnpm check:admin:http`, `pnpm check:ui` and `pnpm check:wishlist:ui` need the
-app running. `pnpm check:wishlist` uses it too, for its anonymous-access
-checks, and skips them if nothing is answering. Start it first, or point them
-somewhere else:
+The browser suites and the HTTP ones need the app running. `pnpm check:wishlist`
+uses it too, for its anonymous-access checks, and skips them if nothing is
+answering. Start it first, or point them somewhere else:
 
 ```bash
 pnpm build && pnpm start
@@ -146,9 +156,25 @@ pnpm check:admin:http
 pnpm check:ui
 pnpm check:wishlist
 pnpm check:wishlist:ui
+pnpm check:cart
+pnpm check:cart:http
+pnpm check:cart:ui
+pnpm check:account
+pnpm check:account:ui
 # or
-CHECK_BASE_URL=http://localhost:3100 pnpm check:wishlist:ui
+CHECK_BASE_URL=http://localhost:3100 pnpm check:cart:ui
 ```
+
+> **Run them one at a time.** Several assert that the seeded catalogue is intact
+> by counting rows, so a suite running beside another sees the other's in-flight
+> fixtures and fails for the wrong reason. This is a convention, not a
+> preference — it was learned the hard way in Phase 8.
+
+One suite reports which path it took rather than assuming: `pnpm check:cart:ui`
+can only drive the real sign-in form against a development server, because the
+console one-time-code transport refuses to run under `NODE_ENV=production` by
+design. Against a production build it replays what `loginAction` does and prints
+a note saying so.
 
 `pnpm check:ui` drives a real headless Chromium. The browser binary is not in
 the repository; install it once with:
@@ -198,6 +224,11 @@ Three rules hold for the whole project:
 | `/shop/[slug]` | Product page, rendered per request from real slugs             |
 | `/wishlist`    | Saved pieces. **Signed-in customers only**, never indexed       |
 | `/cart`        | The bag: lines, quantities, subtotal. Never indexed            |
+| `/account`     | Account overview. **Signed-in only**, never indexed            |
+| `/account/profile`        | The name a customer is addressed by                 |
+| `/account/addresses`      | Saved delivery addresses                            |
+| `/account/addresses/new`  | Add an address                                      |
+| `/account/addresses/[id]` | Edit an address                                     |
 | `/login`       | Phone plus one-time code sign-in, public                       |
 | `/admin`       | Catalogue dashboard. **ADMIN only**, never indexed             |
 | `/admin/products`      | Product list: search, filter, sort, page               |
@@ -256,7 +287,8 @@ docs/
 ├── admin-catalog/README.md   admin architecture, authorisation, mutations
 ├── admin-attributes/README.md  colours, sizes, deactivation, browser verification
 ├── wishlist/README.md        wishlist ownership, archiving, batch state, caching
-└── cart/README.md            bag ownership, guest tokens, pricing, the merge
+├── cart/README.md            bag ownership, guest tokens, pricing, the merge
+└── customer-account/README.md  profile scope, addresses, defaults, snapshots
 
 src/
 ├── proxy.ts                  optimistic request guard (Next.js 16 convention)
@@ -267,7 +299,8 @@ src/
 │   │   ├── shop/page.tsx     /shop — listing, filters, sort, paging
 │   │   ├── shop/[slug]/      /shop/<piece> — product page
 │   │   ├── wishlist/         /wishlist — saved pieces, signed-in only
-│   │   └── cart/             /cart — the bag, guest or signed-in
+│   │   ├── cart/             /cart — the bag, guest or signed-in
+│   │   └── account/          /account — overview, details, addresses
 │   ├── (auth)/               sign-in group: focused, chrome-light
 │   │   ├── layout.tsx
 │   │   └── login/page.tsx    /login
@@ -298,11 +331,14 @@ src/
 │   ├── auth/                 sign-in form, OTP input, sign-out control
 │   ├── wishlist/             the wishlist action result type and its messages
 │   ├── cart/                 the bag action result type and its messages
+│   ├── account/              account action state and the account components
 │   └── storefront/           page sections and the URL query contract
 ├── actions/
 │   ├── auth.ts               the only two authentication endpoints
 │   ├── wishlist.ts           add, remove, toggle — the three wishlist endpoints
 │   ├── cart.ts               add, update, remove, clear — the four bag endpoints
+│   ├── addresses.ts          create, update, set default, delete
+│   ├── account.ts            the one thing a customer may change about themselves
 │   └── admin/                catalogue mutations, one module per feature
 │
 ├── generated/prisma/         Prisma Client — generated on install, git-ignored
@@ -313,6 +349,7 @@ src/
 │   ├── catalog/              filters, row mapping, attribute vocabularies
 │   ├── wishlist/             per-request wishlist state, revalidation plumbing
 │   ├── cart/                 owner resolution, guest tokens, limits, the merge hook
+│   ├── account/              address limits and the account action plumbing
 │   ├── db/client.ts          the single Prisma Client (server-only)
 │   ├── utils/                framework-agnostic helpers
 │   ├── services/             the only layer that queries the database
@@ -746,10 +783,132 @@ tall, below the 24px minimum for a reliable tap target, at every width. The same
 class of defect the Phase 7 browser pass found in the admin area, and the same
 reason it was invisible without measuring a rendered box.
 
+**Quantity is a server decision.** One to twenty per line, a hundred lines per
+bag, and `0` on an update means remove. Adding is relative — "add two" to a line
+holding one makes three — while the `+`/`−` controls set an exact number. Both
+are computed from the row the database holds rather than from a number the
+browser believed, which is what makes a second tab harmless. The limit is a
+shared constant rather than an environment variable, because the browser greys
+out `+` using the same figure and a server that could be configured to disagree
+with it is a control that looks broken.
+
+**It persists, for everyone.** A guest's bag survives a reload, a new tab and a
+closed browser, because it is rows in PostgreSQL reached through a cookie rather
+than anything in the browser's own storage. An account's bag survives sign-out
+and appears on any device its owner signs in on. Neither is ever held in
+`localStorage`, and nothing about either is trusted from the client.
+
 **Checkout is a placeholder and says so.** No address, no payment SDK, no order.
+The bag is the bridge to it: a line already names a `ProductVariant`, already
+carries a quantity, and already has a price-drift story, so Phase 10 can add an
+order line that snapshots a price for real without reshaping any of this.
+
+### Current limitations
+
+- **Stock is not reserved.** Two shoppers can hold the last garment. Committing
+  stock belongs to the order transaction, which does not exist yet, so nothing
+  here promises that what is in a bag can still be bought.
+- **The merge is driven through the real sign-in form only against a
+  development server.** The console OTP transport refuses to run under
+  `NODE_ENV=production` by design, so the production sweep replays what
+  `loginAction` does and says so in its output. Pointed at `pnpm dev`, the same
+  suite types a real code and the merge runs inside `loginAction` — that path is
+  verified, just not on a production build.
+- **Guest bags orphaned by a failed merge** live until they expire. The sweep
+  function exists; no scheduled job calls it yet.
+- **No warning as a bag approaches the hundred-line ceiling** — it is simply
+  refused with an explanation at the limit.
+- **Concurrency is exercised from one process.** Genuinely concurrent at the
+  database, but not across machines.
 
 **Still to come:** checkout, orders and payments — and the stock commitment that
 the bag deliberately does not attempt.
+
+## Phase 10 — customer account and addresses
+
+The room the wishlist, the bag and a delivery address finally share a front door.
+
+Full detail is in
+[docs/customer-account/README.md](docs/customer-account/README.md). The short
+version:
+
+**An account overview that invents nothing.** Who is signed in, the number they
+signed in with, links to the three things they own, and a way out. No order
+count, no amount spent, no loyalty points — none of those systems exist, and a
+dashboard of made-up numbers is how an account area stops being believable.
+
+**Profile editing is deliberately one field.** A customer may change what they
+would like to be called. Not the phone number — it is the account's identity,
+proven by a one-time code, and changing it is a verification flow rather than a
+text input. Not the role. And nothing else at all: no avatar, no birthday, no
+preferences, no saved cards. The narrowness is enforced, not intended — the
+schema has one field and the writer touches one column.
+
+**Saved addresses, shaped for local delivery and for more than that later.**
+Label, recipient, phone, two address lines, landmark, city, state, PIN code and
+an explicitly stored country. The recipient is separate from the account name,
+because ordering a gift means the doorstep needs a different one. The label is
+free text, so a customer with two homes can have "Home" and "Home 2".
+
+**Ownership is in every `where`, not checked afterwards.** Every address
+statement carries `userId` alongside the id, so an address belonging to somebody
+else matches nothing — and is answered exactly as an id that never existed is,
+because a different answer would be a way of asking whether an id is real. The
+suite extracts every `where` clause in the service and fails if one mentions
+`id` without `userId`.
+
+**One default, guaranteed three ways.** The transaction that sets it, a partial
+unique index (`ON "Address"("userId") WHERE "isDefault"`), and an interface that
+renders from the server after the write so two cards can never both look
+default. **The first address a customer saves becomes the default
+automatically** — a customer with one saved address and no default is one who
+reaches a future checkout and is asked to choose from a list of one.
+
+**Deleting the default promotes a replacement**, in the same transaction: the
+most recently updated remaining address, deterministically, with `id` as the
+tie-break. If none remain there is no default, which is correct. Deleting always
+asks first, in a dialog that names the address and says whether it is the
+current default.
+
+**The same phone normaliser as sign-in.** One canonical E.164 in the database,
+not two implementations that disagree.
+
+**Private and dynamic.** Every account route redirects a signed-out visitor at
+the proxy before rendering, carries `noindex`, is absent from the sitemap, and is
+never cached across customers — this is the most sensitive data in the
+application.
+
+**Two new suites.** `pnpm check:account` covers the data, the ownership scan, the
+default rules in every shape, the promotion on delete, the per-account limit,
+isolation in both directions, and the CHECK constraints and partial index pushed
+directly at PostgreSQL. `pnpm check:account:ui` drives headless Chromium through
+the signed-out sweep, the full journey, two customers in two contexts, keyboard
+operation of the delete dialog, and nine widths.
+
+**It found two real defects**, both fixed: the account navigation was labelled
+"Account", colliding with the site footer's "Account" link group and leaving two
+navigation landmarks with the same name on one page; and an address action that
+revalidated the route its own form lived on tore the form down mid-flight, so a
+saved address left the browser sitting on the filled-in form as though nothing
+had happened.
+
+### Current limitations
+
+- **No order history**, because there are no orders. The page does not exist
+  rather than existing to apologise.
+- **No phone-number change.** A verification flow, not a text field.
+- **State and city are text inputs.** A dropdown of every Indian district is a
+  data-maintenance problem the shop does not have yet.
+- **No audit log.** Timestamps record when; a later phase can record who.
+- **`redirect()` from the address actions is not used.** It is correct on the
+  wire — the response carries `x-action-redirect` — but was not applied by the
+  client here, so the form navigates on a server-confirmed success instead.
+
+**Future checkout:** a saved address is mutable, so a future order must
+**snapshot** these columns rather than foreign-key the row. Change a street
+after delivery and an order that points at the live address silently rewrites its
+own history. The columns are shaped so that copy is field-for-field. `OrderAddress`
+is deliberately not modelled yet.
 
 ## What is not built yet
 
@@ -795,7 +954,8 @@ The database models for all of the above are also absent on purpose. See
 | 7     | Admin attributes, and real browser verification — **done**    |
 | 8     | Customer wishlist, persisted per account — **done**           |
 | 9     | Shopping bag, guest and account, against `ProductVariant` — **done** |
-| 10    | Checkout, payments and orders                                 |
-| 11    | Inventory workflows, coupons, reviews, image uploads          |
+| 10    | Customer account and delivery addresses — **done**            |
+| 11    | Checkout, payments and orders                                 |
+| 12    | Inventory workflows, coupons, reviews, image uploads          |
 
 Each phase adds the database models its feature needs, through a migration.

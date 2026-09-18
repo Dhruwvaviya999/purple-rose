@@ -46,5 +46,10 @@ feature behaviour, not a shared shape.
 
 `cart/` holds `cart-state.ts`, the same shape for the bag's Server Actions.
 
+`account/` holds the same result type for the account's actions, plus the
+components the account pages are built from — the navigation, the shell, the
+address form and the address card. Those live here rather than in `components/`
+because they are one capability's screens, not reusable primitives.
+
 Planned: `checkout`, `orders`, `account`, `reviews`, `coupons`,
 `admin-catalog`, `admin-inventory`.

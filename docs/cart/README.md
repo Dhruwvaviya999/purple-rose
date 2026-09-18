@@ -727,11 +727,27 @@ every shape. **Constraints** pushes the refused cases straight at PostgreSQL —
 bag owned by nobody, a bag owned by two, a line with zero in it.
 
 `pnpm check:cart:ui` drives headless Chromium: a guest from product page to
-drawer to `/cart` to reload to removal, two browser contexts proving guest
-isolation, a real sign-in through the OTP form so the real merge runs, the
-product-card quick-add, archive and republish, keyboard operation of the drawer,
-and nine viewport widths. It reuses the Phase 7 Playwright setup; no second
-browser-testing system was introduced.
+drawer to `/cart` to reload to removal to emptying the bag, two browser contexts
+proving guest isolation, the sign-in merge, the product-card quick-add, archive
+and republish, keyboard operation of the drawer, and nine viewport widths. It
+reuses the Phase 7 Playwright setup; no second browser-testing system was
+introduced.
+
+**The sign-in it drives depends on where you point it.** Against a development
+server it fills the form, recovers the one-time code from the challenge row and
+submits it, so the merge under test is the one `loginAction` performs. Against a
+production build the console OTP transport refuses to run — deliberately, so a
+code can never reach a production log — and the suite falls back to replaying
+what `loginAction` does, printing a note saying which path it took. A suite that
+degraded silently would be worse than one that reports it.
+
+**Its test account is not in the `+1555…` block** the other suites reserve. That
+range is the NANP's fictional block and `libphonenumber-js` correctly refuses it
+as not a possible number, so the sign-in form rejects it at the first field and
+no code is ever requested — fine for fixtures that must never collide with a
+real account, useless for driving the real form. This suite uses a valid Indian
+mobile in an obviously synthetic pattern instead, and deletes it by exact match
+like every other fixture.
 
 **All three write, and all three clean up in a `finally`.** Test accounts use
 reserved `+1555…` numbers and are deleted by exact match — never by a pattern —

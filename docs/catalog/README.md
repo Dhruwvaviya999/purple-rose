@@ -209,6 +209,13 @@ along with one for `lowStockThreshold` — when the admin area introduced the
 first write path that is not the seed. See
 [Database changes](../admin-catalog/README.md#database-changes).
 
+**The bag reads this table and never writes it.** Phase 9 added `CartItem`,
+which points at `ProductVariant` and consults `Inventory` to cap a quantity and
+to say what is left. Nothing in the cart decrements stock, reserves it or writes
+a movement: point 3 above is still waiting for the order phase. So the invariant
+this section describes is unchanged — the only writer of `quantity` remains the
+admin area. See [docs/cart/README.md](../cart/README.md).
+
 ---
 
 ## Money
@@ -318,9 +325,21 @@ that the destructive option is hard to take by accident:
 | Variant           | `isActive = false`       | An order line will name it                      |
 | Category membership | Hard delete            | A join row carries nothing to preserve          |
 | Image, Inventory  | Cascade from the owner   | Pure child data                                 |
+| Wishlist, bag rows | Cascade from the owner  | Children of a customer's list, not of the catalogue |
 
 `Product.primaryCategoryId` is `onDelete: Restrict`: deleting a category that
 products are displayed under fails loudly rather than orphaning a catalogue.
+
+Two customer-owned tables now reference the catalogue: `WishlistItem` points at
+a `Product` and `CartItem` points at a `ProductVariant`, both `onDelete:
+Cascade`. Neither cascade fires in practice, because of the first column of the
+table above — the catalogue archives rather than deletes, and there is no
+product- or variant-delete workflow in the admin area. They exist so a hard
+delete, wherever one is ever introduced, cannot leave a customer's row pointing
+at nothing. What each of those tables *does* with an archived product is their
+own concern and is documented with them:
+[wishlist](../wishlist/README.md#archived-products) and
+[bag](../cart/README.md#unavailable-lines).
 
 ---
 
@@ -687,6 +706,7 @@ Chosen from the queries that actually run, not applied column by column.
 | `ProductVariant(productId, colorId, sizeId)` unique | **No duplicate combinations**                         |
 | `ProductVariant(productId)`                    | Loading a product's variants                               |
 | `ProductVariant(colorId)`, `(sizeId)`          | Colour and size filters and facets                         |
+| `CartItem(variantId)`                          | The foreign key check when a variant is deleted (Phase 9)  |
 | `Inventory(variantId)` unique                  | The one-to-one relation                                    |
 | `Inventory(quantity)`                          | Availability, the only predicate this table is filtered by |
 | `ProductImage(productId, colorId, position)`   | "This product's gallery in this colour, in order"          |

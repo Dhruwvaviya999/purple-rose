@@ -17,11 +17,12 @@
  * somebody who tapped a heart while signed out was trying to get to.
  *
  * `/wishlist` earns its place because the wishlist control builds the `next`
- * value itself. Adding a prefix here is the only way a destination becomes
- * reachable, which is what keeps the check a decision rather than a pattern
- * match.
+ * value itself, and `/account` because every page under it redirects a
+ * signed-out visitor to sign in and should bring them back where they were
+ * going. Adding a prefix here is the only way a destination becomes reachable,
+ * which is what keeps the check a decision rather than a pattern match.
  */
-const ALLOWED_PREFIXES = ["/admin", "/shop", "/wishlist"] as const;
+const ALLOWED_PREFIXES = ["/admin", "/shop", "/wishlist", "/account"] as const;
 
 export function safeRedirectPath(
   candidate: string | null | undefined,

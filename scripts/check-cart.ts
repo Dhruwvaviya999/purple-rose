@@ -1362,8 +1362,180 @@ const startedAt = new Date();
  * Entry point
  * ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * The security audit, as assertions
+ * ------------------------------------------------------------------ */
+
+/**
+ * Every line of the Phase 9 security checklist, checked rather than asserted.
+ *
+ * These read the source of the modules involved. A checklist that lives only in
+ * a document goes stale the first time somebody adds a convenient parameter, so
+ * each item here is a property of the code that a future change would have to
+ * break loudly.
+ *
+ * The behavioural half of the same list — customer A cannot reach customer B,
+ * one guest cannot reach another, a bag is unreachable after sign-out — is
+ * exercised against real rows further down, and over HTTP in
+ * `pnpm check:cart:http`.
+ */
+function checkSecurityAudit(): void {
+  console.log("\n== the security checklist, as code ==");
+
+  const ownership = withoutComments(
+    readSource("src", "lib", "cart", "ownership.ts"),
+  );
+  const owner = withoutComments(readSource("src", "lib", "cart", "owner.ts"));
+  const service = withoutComments(
+    readSource("src", "lib", "services", "cart-service.ts"),
+  );
+  const actions = withoutComments(readSource("src", "actions", "cart.ts"));
+  const validation = withoutComments(
+    readSource("src", "lib", "validations", "cart.ts"),
+  );
+  const redirect = withoutComments(
+    readSource("src", "lib", "auth", "redirect.ts"),
+  );
+
+  // The guest token is opaque: random bytes, not anything derived from a user,
+  // a bag or a product.
+  check(
+    "the guest token is random bytes, not derived from anything",
+    /randomBytes\(TOKEN_BYTES\)/.test(ownership),
+  );
+  check("it carries 256 bits of entropy", /TOKEN_BYTES = 32/.test(ownership));
+
+  // Only the digest is ever persisted.
+  check(
+    "only a digest is written to the database",
+    /createHash\("sha256"\)/.test(ownership),
+  );
+  check(
+    "the service only ever sees a hash, never a raw token",
+    /guestTokenHash/.test(service) && !/\brawToken\b/.test(service),
+  );
+  check(
+    "a raw token appears nowhere in a Prisma write",
+    !/guestToken:\s/.test(service),
+  );
+
+  // The raw token is never logged. Every console call in the bag is checked,
+  // not only the ones that look risky.
+  for (const [name, source] of [
+    ["ownership.ts", ownership],
+    ["owner.ts", owner],
+    ["cart-service.ts", service],
+    ["cart.ts", actions],
+    [
+      "sign-in.ts",
+      withoutComments(readSource("src", "lib", "cart", "sign-in.ts")),
+    ],
+    [
+      "action-support.ts",
+      withoutComments(readSource("src", "lib", "cart", "action-support.ts")),
+    ],
+  ] as const) {
+    const logs = [...source.matchAll(/console\.\w+\(([\s\S]*?)\);/g)].map(
+      (match) => match[1] ?? "",
+    );
+    const offender = logs.find((line) => /token|cookie/i.test(line));
+
+    check(
+      `${name} logs no token, hash or cookie value`,
+      offender === undefined,
+      offender?.replace(/\s+/g, " ").slice(0, 70) ?? "",
+    );
+  }
+
+  // Nothing an owner, a price or a stock figure could arrive in.
+  check("no schema accepts a userId", !/userId:\s*z\./.test(validation));
+  check(
+    "no schema accepts a price, subtotal or compare-at",
+    !/(price|subtotal|total|compareAt)\w*:\s*z\./i.test(validation),
+  );
+  check(
+    "no schema accepts a stock or availability figure",
+    !/(stock|available)\w*:\s*z\./i.test(validation),
+  );
+  check(
+    "the actions take only ids and a quantity",
+    !/\buserId\b/.test(actions) && !/\bcartId\b/.test(actions),
+  );
+  check(
+    "every price written comes from the catalogue row",
+    /unitPrice: variant\.price/.test(service) &&
+      /unitPrice: write\.unitPrice/.test(service),
+  );
+
+  // Ownership is scoped server-side on every statement that takes a line id.
+  check(
+    "updating a line is scoped to the owner's own bag",
+    /id: cartItemId, cart: ownerWhere\(owner\)/.test(service),
+  );
+  check(
+    "removing a line is scoped to the owner's own bag",
+    /deleteMany\(\{\s*where: \{ id: cartItemId, cartId \}/.test(service),
+  );
+  check(
+    "there is no delete by line id alone",
+    !/cartItem\.delete\(\{\s*where: \{ id:/.test(service),
+  );
+
+  // No open redirect was introduced.
+  check(
+    "the bag introduces no redirect of its own",
+    !/redirect\(/.test(actions) && !/redirect\(/.test(service),
+  );
+  check(
+    // Spelled out in full so widening it is a deliberate edit here as well as
+    // there. `/account` joined the list in Phase 10, which this check caught.
+    "and the sign-in allow-list did not quietly widen",
+    /ALLOWED_PREFIXES = \["\/admin", "\/shop", "\/wishlist", "\/account"\]/.test(
+      redirect,
+    ),
+  );
+
+  // Nothing internal in what the browser is told.
+  const state = withoutComments(
+    readSource("src", "features", "cart", "cart-state.ts"),
+  );
+  check(
+    "the message table is fixed, with no interpolated internals",
+    !/\$\{(error|err|e)\b/.test(state),
+  );
+
+  // No Prisma anywhere a browser would load it.
+  const clientFiles = [
+    ["cart-line-item.tsx", "src/components/commerce/cart-line-item.tsx"],
+    ["cart-drawer.tsx", "src/components/commerce/cart-drawer.tsx"],
+    ["add-to-bag-button.tsx", "src/components/commerce/add-to-bag-button.tsx"],
+    ["clear-bag-button.tsx", "src/components/commerce/clear-bag-button.tsx"],
+    ["cart-state.ts", "src/features/cart/cart-state.ts"],
+    ["limits.ts", "src/lib/cart/limits.ts"],
+  ] as const;
+
+  for (const [name, path] of clientFiles) {
+    const source = readSource(...path.split("/"));
+
+    check(
+      `${name} imports no Prisma and no database client`,
+      !/@\/lib\/db\/client|generated\/prisma\/client|@prisma\//.test(source),
+    );
+  }
+
+  check(
+    // Comments stripped: the module's own docstring explains that it is free of
+    // `server-only`, and a naive search would fail on the sentence saying so.
+    "the shared limits module is free of server-only, so both sides agree",
+    !/server-only/.test(
+      withoutComments(readSource("src", "lib", "cart", "limits.ts")),
+    ),
+  );
+}
+
 async function main(): Promise<void> {
   checkActionShape();
+  checkSecurityAudit();
 
   if (!process.env.DATABASE_URL?.trim()) {
     console.log(

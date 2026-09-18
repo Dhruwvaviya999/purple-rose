@@ -30,6 +30,7 @@ import { prisma } from "@/lib/db/client";
 | `product-service.ts`   | Listing, search, facets, product detail, related products  |
 | `wishlist-service.ts`  | One customer's saved pieces: read, add, remove, toggle      |
 | `cart-service.ts`      | One shopper's bag — guest or account: read, mutate, merge   |
+| `address-service.ts`   | A customer's saved delivery addresses, and which is default |
 | `category-service.ts`  | Active categories: navigation, tiles, lookup, sitemap      |
 | `admin/`               | The catalogue **write** path, plus the reads admin screens need |
 

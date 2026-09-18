@@ -35,11 +35,16 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/cookie";
  * Path prefixes that require a session.
  *
  * `/wishlist` joined `/admin` in Phase 8: it is the first storefront route that
- * is one person's rather than everyone's. The rest of the storefront is public
- * and is deliberately not listed — an anonymous shopper browses the whole
- * catalogue without this file doing anything.
+ * is one person's rather than everyone's. `/account` joined them in Phase 10 —
+ * it is the most personal area in the application, holding a name, a phone
+ * number and somebody's home address.
+ *
+ * `/cart` is deliberately **not** here. A bag belongs to whoever is carrying it,
+ * signed in or not, and demanding a sign-in to look at one is how a sale is
+ * lost. The rest of the storefront is public for the same reason: an anonymous
+ * shopper browses the whole catalogue without this file doing anything.
  */
-const PROTECTED_PREFIXES = ["/admin", "/wishlist"] as const;
+const PROTECTED_PREFIXES = ["/admin", "/wishlist", "/account"] as const;
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

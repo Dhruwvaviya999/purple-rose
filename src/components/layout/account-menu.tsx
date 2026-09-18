@@ -22,8 +22,13 @@ import { SignOutButton } from "@/features/auth/components/sign-out-button";
  * on the server whether or not this link is rendered, so a customer who guesses
  * the URL gets no further than one who cannot see the link.
  *
- * Orders has no page yet and is shown as text with the reason attached, rather
- * than as a link into nothing.
+ * Every entry goes somewhere real. Phase 10 replaced the "Orders" placeholder
+ * with the account area that now exists; there is still no Orders link, because
+ * there are still no orders, and a menu full of things that apologise when you
+ * reach them is worse than a short one.
+ *
+ * The signed-in name is shown above the number when there is one, because a
+ * customer who has bothered to tell us what to call them should see it used.
  */
 export async function AccountMenu() {
   const user = await getCurrentUser();
@@ -50,9 +55,28 @@ export async function AccountMenu() {
         <p className="px-3 py-2 font-sans text-xs text-ink-subtle">
           Signed in as
           <span className="mt-0.5 block text-sm text-ink">
-            {user.phoneNumber}
+            {user.name ?? user.phoneNumber}
           </span>
+          {user.name ? (
+            <span className="mt-0.5 block text-xs text-ink-subtle">
+              {user.phoneNumber}
+            </span>
+          ) : null}
         </p>
+
+        <Link
+          href="/account"
+          className="block rounded-control px-3 py-2 font-sans text-sm text-ink transition-colors hover:bg-surface-strong hover:text-brand-strong"
+        >
+          Account
+        </Link>
+
+        <Link
+          href="/account/addresses"
+          className="block rounded-control px-3 py-2 font-sans text-sm text-ink transition-colors hover:bg-surface-strong hover:text-brand-strong"
+        >
+          Addresses
+        </Link>
 
         <Link
           href="/wishlist"
@@ -61,13 +85,12 @@ export async function AccountMenu() {
           Wishlist
         </Link>
 
-        <span
-          title="Order history opens with checkout"
-          className="block px-3 py-2 font-sans text-sm text-ink-subtle"
+        <Link
+          href="/cart"
+          className="block rounded-control px-3 py-2 font-sans text-sm text-ink transition-colors hover:bg-surface-strong hover:text-brand-strong"
         >
-          Orders
-          <span className="sr-only"> — opens with checkout</span>
-        </span>
+          Bag
+        </Link>
 
         {user.role === Role.ADMIN ? (
           <Link

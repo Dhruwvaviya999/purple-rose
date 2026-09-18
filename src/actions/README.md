@@ -22,6 +22,8 @@ actions/
 ├── auth.ts      request a code, verify it, sign out
 ├── wishlist.ts  add, remove, toggle — the customer's saved pieces
 ├── cart.ts      add, update, remove, clear — the shopper's bag
+├── addresses.ts create, update, set default, delete
+├── account.ts   the one thing a customer may change about themselves
 └── admin/       catalogue mutations, one module per feature
     ├── products.ts
     ├── categories.ts
